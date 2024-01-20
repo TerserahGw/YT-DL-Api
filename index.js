@@ -1,6 +1,6 @@
 import express from 'express';
 import { yt } from './scrape/y2mate.js';
-import { play } fron './scrape/play.js'; // Sesuaikan dengan path yang benar
+import { play } from './scrape/play.js'; // Sesuaikan dengan path yang benar
 
 const app = express();
 const PORT = process.env.PORT || 3000;
