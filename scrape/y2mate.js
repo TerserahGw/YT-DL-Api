@@ -94,8 +94,8 @@ async function analyzeV2(url, server = 'id') {
 
     console.log('Y2Mate API (analyzeV2) Response:', response.status);
 
-    const key360p = response.data.links?.other?.['250']?.k;
-    const keyM4A = response.data.links?.mp3?.['140']?.k;
+    const key360p = response.data.links?.mp4?.['18']?.k;
+    const keyM4A = response.data.links?.other?.['250']?.k;
     const title = response.data.title;
     const ytIdLink = response.data.vid;
     const videoUrl = `https://www.youtube.com/watch?v=${ytIdLink}`;
