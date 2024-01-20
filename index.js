@@ -21,14 +21,14 @@ app.get('/youtube', async (req, res) => {
 });
 
 app.get('/play', async (req, res) => {
-  const youtubeUrl = req.query.q;
+  const queryYt = req.query.q;
 
-  if (!query) {
+  if (!queryYt) {
     return res.status(400).json({ error: 'Invalid or missing query' });
   }
 
   try {
-    const result = await play(query);
+    const result = await play(queryYt);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error' });
