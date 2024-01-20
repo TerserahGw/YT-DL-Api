@@ -1,5 +1,6 @@
 import express from 'express';
-import { yt } from './scrape/y2mate.js'; // Sesuaikan dengan path yang benar
+import { yt } from './scrape/y2mate.js';
+import { play } fron './scrape/play.js'; // Sesuaikan dengan path yang benar
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +14,21 @@ app.get('/youtube', async (req, res) => {
 
   try {
     const result = await yt(youtubeUrl);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.get('/play', async (req, res) => {
+  const youtubeUrl = req.query.q;
+
+  if (!query) {
+    return res.status(400).json({ error: 'Invalid or missing query' });
+  }
+
+  try {
+    const result = await play(query);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error' });
