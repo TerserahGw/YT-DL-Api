@@ -110,47 +110,47 @@ async function convertV2(url, key ) {
 
 
 async function play(query, server = 'id') {
-  if (!query) throw '✳️ Apa yang Anda ingin saya telusuri di YouTube?';
-  let list = await yts(query);
-  let finalList = list.all;
-  let firstResult = finalList[0];
-  
-  if (firstResult) {
-    const { url, title, description, thumbnail, timestamp, ago, views, author } = firstResult;
-    const authorName = author ? author.name : '';
-    const authorUrl = author ? author.url : '';
-  
-    try {
-      const analyzeV2Result = await analyzeV2(url, server);
-    
-      const convertV2Mp4Result = await convertV2(url, analyzeV2Result.key360p);
-    
-      const convertV2Mp3Result = await convertV2(url, analyzeV2Result.keyM4A);
-  
-      return {
-        status: true,
-        pembuat: 'KeiLaSenpai',
-        judul: title,
-        videoUrl: url,
-        penonton: views,
-        waktu: timestamp,
-        tanggal: ago,
-        channel: authorName,
-        channelUrl: authorUrl,
-        dekripsi: description,
-        hasil: {
-          cover: thumbnail,
-          video: convertV2Mp4Result.dlink,
-          music: convertV2Mp3Result.dlink,
-        },
-      };
-    } catch (error) {
-      console.error('Error during processing:', error);
-      return { status: false, error: 'Terjadi kesalahan: ' + error.message };
-    }
-  } else {
-    console.log('Tidak ada hasil yang ditemukan.');
-    return { status: false, error: 'Tidak ada hasil yang ditemukan.' };
+  try {
+    if (!query) throw '✳️ Apa yang Anda ingin saya telusuri di YouTube?';
+
+    let list = await yts(query);
+    let finalList = list.all;
+    let firstResult = finalList[0];
+
+    let url = firstResult.url;
+    let title = firstResult.title;
+    let description = firstResult.description;
+    let thumbnail = firstResult.thumbnail;
+    let timestamp = firstResult.timestamp;
+    let ago = firstResult.ago;
+    let views = firstResult.views;
+    let authorName = firstResult.author.name;
+    let authorUrl = firstResult.author.url;
+
+    const analyzeV2Result = await analyzeV2(url, server);
+    const convertV2Mp4Result = await convertV2(url, analyzeV2Result.key360p);
+    const convertV2Mp3Result = await convertV2(url, analyzeV2Result.keyM4A);
+
+    return {
+      status: true,
+      pembuat: 'KeiLaSenpai',
+      judul: title,
+      videoUrl: url,
+      penonton: views,
+      waktu: timestamp,
+      tanggal: ago,
+      channel: authorName,
+      channelUrl: authorUrl,
+      dekripsi: description,
+      hasil: {
+        cover: thumbnail,
+        video: convertV2Mp4Result.dlink,
+        music: convertV2Mp3Result.dlink,
+      },
+    };
+  } catch (error) {
+    console.error('Error during processing:', error);
+    return { status: false, error: 'Terjadi kesalahan: ' + error.message };
   }
 }
 
