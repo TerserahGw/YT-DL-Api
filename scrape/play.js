@@ -65,6 +65,7 @@ async function convertV2(url, key ) {
     const ytIdRegex = /(?:youtube\.com\/\S*(?:(?:\/e(?:mbed))?\/|watch\?(?:\S*?&?v\=))|youtu\.be\/)([a-zA-Z0-9_-]{6,11})/;
     const ytIdMatch = ytIdRegex.exec(url);
 
+    console.log('YouTube Video URL:', url);
     if (!ytIdMatch) {
       throw new Error('Invalid YouTube video URL');
     }
