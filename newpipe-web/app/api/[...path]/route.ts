@@ -39,7 +39,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
     origin = new URL(base);
     if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== "/") return bad("Invalid EXTRACTOR_BASE_URL; use a host origin only.", 503);
     const localDev = process.env.NODE_ENV === "development" && origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname);
-    if (origin.protocol !== "https:" && !localDev) return bad("Extractor backend must use HTTPS.", 503);
+    // A Vercel Services binding may produce an internal HTTP address on its private network.
+    const privateBinding = process.env.VERCEL === "1" && origin.protocol === "http:";
+    if (origin.protocol !== "https:" && !localDev && !privateBinding) return bad("Extractor backend must use HTTPS or a Vercel private service binding.", 503);
   } catch { return bad("Invalid EXTRACTOR_BASE_URL.", 503); }
 
   const upstream = new URL("/api/v1" + (name === "trending" ? "/kiosks/" : spec.endpoint), origin);

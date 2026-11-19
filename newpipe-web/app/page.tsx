@@ -182,7 +182,7 @@ export default function HomePage() {
         <button className={"nav-item " + (mode==="about"?"active":"")} onClick={()=>navigate("about")}><span>ⓘ</span> Setup & About <span className="nav-arrow">›</span></button>
       </nav>
       <div className="sidebar-bottom">
-        <div className="service-card"><div className="service-row"><span className={"status-dot " + health} /><span>Extractor backend</span></div><b>{health==="online"?"Connected":health==="unconfigured"?"Not configured":health==="checking"?"Checking...":"Unavailable"}</b><small>{health==="online"?"Java backend ready":"Set EXTRACTOR_BASE_URL to enable"}</small></div>
+        <div className="service-card"><div className="service-row"><span className={"status-dot " + health} /><span>Extractor backend</span></div><b>{health==="online"?"Connected":health==="unconfigured"?"Not configured":health==="checking"?"Checking...":"Unavailable"}</b><small>{health==="online"?"Java backend ready":"Check Vercel Services deployment"}</small></div>
         <div className="sidebar-foot">Built for Vercel · NewPipeExtractor</div>
       </div>
     </aside>
@@ -207,7 +207,7 @@ export default function HomePage() {
           {!state.loading && !state.error && !detail && !state.data && <div className="feature-grid">
             <button className="feature-card" onClick={()=>void loadTrend("trending_music")}><div className="feature-icon purple">♫</div><h3>Explore trending</h3><p>Temukan musik, gaming, dan film yang sedang populer.</p><span>Explore →</span></button>
             <button className="feature-card" onClick={()=>navigate("api")}><div className="feature-icon blue">⌘</div><h3>REST API</h3><p>Akses data dari bot, website, atau aplikasi lewat JSON.</p><span>View endpoints →</span></button>
-            <button className="feature-card" onClick={()=>navigate("about")}><div className="feature-icon pink">⚙</div><h3>Connect backend</h3><p>Hubungkan server Java dengan satu environment variable.</p><span>Setup guide →</span></button>
+            <button className="feature-card" onClick={()=>navigate("about")}><div className="feature-icon pink">⚙</div><h3>Connect backend</h3><p>Backend Java berjalan langsung di Vercel melalui Container Runtime.</p><span>Setup guide →</span></button>
           </div>}
           {renderResults()}
         </>}
@@ -223,9 +223,9 @@ export default function HomePage() {
           <p className="disclaimer">API mencerminkan format JSON asli dari backend Java. Endpoint membutuhkan backend aktif; kunci akses dan rate limiting publik harus kamu konfigurasi di deployment.</p>
         </>}
         {mode==="about" && <>
-          <div className="page-heading"><span className="eyebrow">SYSTEM SETUP</span><h1>Connect your backend<span className="accent-text">.</span></h1><p>Frontend ini berjalan di Vercel, sedangkan Java NewPipeExtractor memerlukan hosting terpisah.</p></div>
-          <div className="steps"><div><span>01</span><h3>Run a Java backend</h3><p>Gunakan Docker image <code>mrtumble/opentube-backend:latest</code> di VPS/Docker hosting. Backend mendengarkan port 8080 secara lokal.</p></div><div><span>02</span><h3>Secure HTTPS endpoint</h3><p>Publikasikan backend melalui reverse proxy HTTPS. Amankan aksesnya dengan autentikasi proxy, firewall, dan rate limit.</p></div><div><span>03</span><h3>Set Vercel environment</h3><p>Tambahkan <code>EXTRACTOR_BASE_URL</code> = <code>https://extractor.example.com</code>, lalu redeploy website. Tambahkan <code>BACKEND_AUTHORIZATION</code> jika reverse proxy membutuhkan token.</p></div><div><span>04</span><h3>Verify API health</h3><p>Buka <code>/api/health</code> dan coba <code>/api/search?q=Minecraft</code>. Jika backend tidak aktif, UI menampilkan error yang jelas.</p></div></div>
-          <div className="setup-note"><strong>Important</strong><p>Stream URL mungkin terikat IP server yang melakukan ekstraksi, sehingga tidak selalu bisa diputar langsung dari perangkat lain. Ini bukan proxy streaming lintas IP.</p></div>
+          <div className="page-heading"><span className="eyebrow">SYSTEM SETUP</span><h1>Connect your backend<span className="accent-text">.</span></h1><p>Frontend Next.js dan backend Java NewPipeExtractor asli dapat berjalan dalam satu deployment Vercel Services (Beta).</p></div>
+          <div className="steps"><div><span>01</span><h3>Import GitHub repository</h3><p>Import <code>TerserahGw/YT-DL-Api</code> ke Vercel. Pilih Root Directory <code>newpipe-web</code>.</p></div><div><span>02</span><h3>One project, two services</h3><p><code>vercel.json</code> otomatis mendefinisikan Next.js Web dan backend Java NewPipeExtractor yang berjalan dalam Vercel Container Runtime.</p></div><div><span>03</span><h3>No VPS or manual URL needed</h3><p>Binding privat Vercel menyuntikkan <code>EXTRACTOR_BASE_URL</code> ke frontend. Tidak perlu server terpisah atau mengisi URL backend.</p></div><div><span>04</span><h3>Verify API health</h3><p>Setelah deploy, buka <code>/api/health</code> kemudian coba <code>/api/search?q=Minecraft</code>. Lihat Runtime Logs jika backend belum aktif.</p></div></div>
+          <div className="setup-note"><strong>Important</strong><p>Vercel Container Runtime masih Beta dan membutuhkan resource cukup untuk Java. Stream URL mungkin terikat IP server sehingga tidak selalu bisa diputar langsung dari perangkat lain.</p></div>
         </>}
         <footer>Unofficial NewPipe web gateway · Not affiliated with YouTube or TeamNewPipe. <span>© 2026 · Built for developers</span></footer>
       </div>

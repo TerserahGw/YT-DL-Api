@@ -1,3 +1,29 @@
 {
-  "framework": "nextjs"
+  "services": {
+    "web": {
+      "root": ".",
+      "framework": "nextjs",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "extractor",
+          "format": "url",
+          "env": "EXTRACTOR_BASE_URL"
+        }
+      ]
+    },
+    "extractor": {
+      "root": "backend/",
+      "runtime": "container",
+      "entrypoint": "Dockerfile.vercel"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    }
+  ]
 }
