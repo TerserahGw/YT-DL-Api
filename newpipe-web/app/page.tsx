@@ -81,7 +81,12 @@ function duration(value: unknown): string {
 async function api(path: string): Promise<Obj> {
   const res = await fetch(path, { cache: "no-store" });
   const content = (await res.json()) as Obj;
-  if (!res.ok) throw new Error(String(content.error || content.message || `HTTP ${res.status}`));
+  if (!res.ok) {
+    if (content.code === "UPSTREAM_BLOCKED") {
+      throw new Error("YouTube meminta verifikasi anti-bot untuk IP backend Vercel. Backend Java tetap online, tetapi akses metadata video ditolak. Ini bukan masalah konfigurasi atau koneksi website.");
+    }
+    throw new Error(String(content.error || content.message || `HTTP ${res.status}`));
+  }
   return content;
 }
 
@@ -107,6 +112,7 @@ export default function HomePage() {
     if (kind) {
       setDetail(null);
       setSelectedTab("info");
+      setState((old) => ({ ...old, error: "" }));
     } else setState({ loading: true, error: "", data: null, label });
     try {
       const data = await api(path);
@@ -114,7 +120,7 @@ export default function HomePage() {
       else setState({ loading: false, error: "", data, label });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      if (kind) setState({ loading: false, error: message, data: null, label });
+      if (kind) setDetail({ kind: "request-error", data: { message }, item, url: item?.url });
       else setState({ loading: false, error: message, data: null, label });
     }
   }
@@ -234,7 +240,14 @@ export default function HomePage() {
 
   function renderResults() {
     if (state.loading) return <div className="loading-grid">{Array.from({length:6},(_,i)=><div className="skeleton" key={i}><div/><span/><span/></div>)}</div>;
-    if (state.error) return <div className="empty-state error-state"><div>!</div><h3>Could not fetch content</h3><p>{state.error}</p><button onClick={()=>navigate("about")}>Check backend setup ↗</button></div>;
+    if (state.error) return <div className="empty-state error-state"><div>!</div><h3>Gagal mengambil data</h3><p>{state.error}</p><button onClick={()=>navigate("about")}>Lihat status backend ↗</button></div>;
+    if (detail?.kind === "request-error") return <div className="empty-state error-state">
+      <div>!</div><h3>Video belum dapat diekstrak</h3>
+      <p>{detail.data.message}</p>
+      <p>Permintaan ditolak oleh YouTube, bukan karena backend Java mati. Hindari mengulang permintaan terus-menerus; tunggu sebelum mencoba lagi.</p>
+      <button onClick={()=>setDetail(null)}>← Kembali ke hasil pencarian</button>
+      {validLink(detail.url) && <p><a className="external-link" href={validLink(detail.url)} target="_blank" rel="noopener noreferrer">Buka sumber video ↗</a></p>}
+    </div>;
     if (detail) return <div className="detail-panel">
       <button className="back-btn" onClick={()=>setDetail(null)}>← Back to results</button>
       <div className="detail-head">
