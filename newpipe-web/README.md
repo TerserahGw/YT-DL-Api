@@ -2,10 +2,10 @@
 
 **One Vercel project. No VPS, no second host, no reimplementation of NewPipeExtractor in JavaScript.**
 
-- `web` service: Next.js 16 responsive website + JSON API gateway.
-- `extractor` service: **actual Java backend** using [TeamNewPipe/NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor), packaged by the independent GPL-3.0 project [NewPipeExtractorAPI](https://github.com/kl3pt0gr4ph/NewPipeExtractorAPI) as `mrtumble/opentube-backend:latest`.
+- `newpipe-web` service: Next.js 16 responsive website + JSON API gateway.
+- `backend` service: **actual Java backend** using [TeamNewPipe/NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor), packaged by the independent GPL-3.0 project [NewPipeExtractorAPI](https://github.com/kl3pt0gr4ph/NewPipeExtractorAPI) as `mrtumble/opentube-backend:latest`.
 - Vercel's **Container Runtime** runs Java from `backend/Dockerfile.vercel`.
-- Vercel's **private service binding** provides `EXTRACTOR_BASE_URL` to Next.js. No public Java endpoint to create, and you don't need to set this variable yourself.
+- Vercel's **private service binding**, configured in the repository-root `vercel.json`, provides `EXTRACTOR_BASE_URL` to Next.js. No public Java endpoint to create, and you don't need to set this variable yourself.
 
 This uses Vercel Services / Container Runtime **Beta**. The feature is documented as available on all plans, but deployment success and Java runtime behavior on your project must be confirmed by actual build/runtime logs. Vercel Functions are metered and Java startup may increase cold-start latency and resource usage.
 
@@ -13,8 +13,8 @@ This uses Vercel Services / Container Runtime **Beta**. The feature is documente
 
 1. Open https://vercel.com/new and login to GitHub.
 2. Import `TerserahGw/YT-DL-Api`.
-3. Set **Root Directory** to `newpipe-web`. This is mandatory since the repository also contains a separate older project at its root.
-4. Vercel should detect the **Vercel Services** configuration from `newpipe-web/vercel.json`. Do not replace this file with the old single-service Next.js config.
+3. Set **Root Directory** to the repository root (`./`, default). Do **not** choose `newpipe-web`: the multi-service `vercel.json` is now at the repository root.
+4. Vercel should detect the **Vercel Services** configuration from the repository-root `vercel.json`. Do not replace this file with the old single-service Next.js config.
 5. Do **not** set `EXTRACTOR_BASE_URL` manually. The `web → extractor` service binding injects it at runtime.
 6. Click **Deploy**. The frontend and Java container will be built in the same deployment.
 7. When the deployment is ready, open `https://YOUR-VERCEL-URL/api/health`. Then test `/api/search?q=Minecraft`, `/api/services` and the home page.
@@ -23,9 +23,9 @@ If you already created a Vercel project from the earlier revision, keep the same
 
 ### Diagnosing a build or runtime problem
 
-- **Project detects only Next.js**: ensure Root Directory = `newpipe-web` and the `vercel.json` in that folder still contains `services`.
+- **Project detects only Next.js**: ensure Root Directory = repository root (`./`) and the root `vercel.json` contains `services`.
 - **Java service reports that it can't bind port 80** (unprivileged upstream image): in Vercel Project → Settings → Environment Variables set `PORT=8080` and `SERVER_PORT=8080`, then redeploy. Vercel's Container runtime defaults to routing port 80, but the project environment `PORT` may override this.
-- **503 unconfigured**: the `web` service did not receive `EXTRACTOR_BASE_URL`. Check the service binding in `vercel.json`; it cannot be replaced with a browser-side variable.
+- **503 unconfigured**: the `newpipe-web` service did not receive `EXTRACTOR_BASE_URL`. Check the service binding in `vercel.json`; it cannot be replaced with a browser-side variable.
 - **502 / timeout / cold start**: check Vercel Runtime Logs for both services. Java startup may exceed the calling function's timeout; multiple requests can create additional cold starts.
 - **403 / no streams**: NewPipeExtractor depends on changing upstream providers, IP reputation, and content availability. This does not imply Vercel cannot run Java.
 - **Service not enabled**: Vercel Services and Containers remain beta. The Vercel account/project must be able to deploy them.
@@ -70,7 +70,7 @@ cp .env.example .env.local
 npm install
 npm run dev
 ```
-`next dev` reads local `EXTRACTOR_BASE_URL=http://127.0.0.1:8080`. If you want to test the full two-service topology, use `vercel dev` from `newpipe-web` with Docker installed.
+`next dev` reads local `EXTRACTOR_BASE_URL=http://127.0.0.1:8080`. If you want to test the full two-service topology, use `vercel dev` from the repository root with Docker installed.
 
 ## Official documentation
 
@@ -78,3 +78,7 @@ npm run dev
 - https://vercel.com/kb/guide/docker
 - https://github.com/TeamNewPipe/NewPipeExtractor
 - https://github.com/kl3pt0gr4ph/NewPipeExtractorAPI
+
+## Vercel service routing confirmation
+
+The old Express app at repository root is preserved but **not deployed** by this services configuration. The public catch-all sends all paths (including `/api/*`) to `newpipe-web`, which implements an allowlisted REST gateway. `backend` remains internal. Private binding: `newpipe-web` → `backend` as `EXTRACTOR_BASE_URL`. Do not add a public `/api/*` rewrite directly to Java because the Java app expects `/api/v1/*`, while the web gateway exposes `/api/search`, `/api/health`, and more. The root config is the sole authoritative `vercel.json`.
