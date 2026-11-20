@@ -69,7 +69,7 @@ export function bestImage(value: unknown): string | null {
 export function normalizeItem(source: unknown): Node | null {
   const item = safe(source);
   if (!Object.keys(item).length) return null;
-  const itemType = stringValue(item.type || item.constructor?.type).toLowerCase();
+  const itemType = stringValue(item.type || (item.constructor as {type?: string} | undefined)?.type).toLowerCase();
   const videoId = stringValue(item.video_id || (itemType.includes("video") ? item.id : "")).trim();
   const playlistId = stringValue(item.playlist_id || (itemType.includes("playlist") ? item.id : "")).trim();
   const channelId = stringValue(item.channel_id || (itemType.includes("channel") ? item.id : "")).trim();
