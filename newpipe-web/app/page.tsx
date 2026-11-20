@@ -22,7 +22,9 @@ const API_ENDPOINTS = [
   { path: "/api/channel-videos?id=%40GoogleDevelopers", title: "Channel videos", note: "Video channel" },
   { path: "/api/trending?category=trending_music", title: "Trending", note: "Musik, gaming, atau film" },
   { path: "/api/services", title: "Services", note: "Daftar layanan yang didukung" },
-  { path: "/api/health", title: "Health", note: "Kesiapan layanan YouTube.js" }
+  { path: "/api/health", title: "Health", note: "Kesiapan layanan YouTube.js" },
+  { path: "/api/lyrics?track=Yellow&artist=Coldplay", title: "Lyrics JSON", note: "Lirik multisumber, timestamp baris dan per kata" },
+  { path: "/api/lyrics/sources", title: "Lyrics sources", note: "Daftar 7 penyedia lirik" }
 ];
 const TRENDS = [
   { id: "trending_music", title: "Music", icon: "♫" },
@@ -196,7 +198,7 @@ export default function HomePage() {
     <main className="main">
       <header className="topbar">
         <div className="topbar-left"><button className="menu-toggle" onClick={()=>setMobileMenu(!mobileMenu)} aria-label="Toggle menu">☰</button><span className="breadcrumbs">Workspace <span>/</span> {mode==="discover"?"Explore":mode==="trending"?"Trending":mode==="api"?"API Explorer":"Setup"}</span></div>
-        <div className="header-right"><span className="header-version">v2.0.0</span><span className={"connection " + health}><span className={"status-dot "+health}/>{health==="online"?"Backend online":health==="unconfigured"?"Needs setup":health==="checking"?"Checking":"Backend offline"}</span></div>
+        <div className="header-right"><span className="header-version">v2.1.0</span><span className={"connection " + health}><span className={"status-dot "+health}/>{health==="online"?"Backend online":health==="unconfigured"?"Needs setup":health==="checking"?"Checking":"Backend offline"}</span></div>
       </header>
       <div className="content">
         {mode==="discover" && <>
@@ -213,7 +215,7 @@ export default function HomePage() {
           {!state.loading && !state.error && !detail && !state.data && <div className="feature-grid">
             <button className="feature-card" onClick={()=>void loadTrend("trending_music")}><div className="feature-icon purple">♫</div><h3>Explore trending</h3><p>Temukan musik, gaming, dan film yang sedang populer.</p><span>Explore →</span></button>
             <button className="feature-card" onClick={()=>navigate("api")}><div className="feature-icon blue">⌘</div><h3>REST API</h3><p>Akses data dari bot, website, atau aplikasi lewat JSON.</p><span>View endpoints →</span></button>
-            <button className="feature-card" onClick={()=>navigate("about")}><div className="feature-icon pink">⚙</div><h3>YouTube.js runtime</h3><p>Ekstraksi metadata dilakukan langsung dari server Node.js di Vercel.</p><span>Setup guide →</span></button>
+            <button className="feature-card" onClick={()=>navigate("about")}><div className="feature-icon pink">⚙</div><h3>YouTube.js runtime</h3><p>YouTube.js menangani permintaan utama, yt-dlp menjadi fallback internal jika gagal, dan tersedia API lirik JSON.</p><span>Setup guide →</span></button>
           </div>}
           {renderResults()}
         </>}

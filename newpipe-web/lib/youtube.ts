@@ -1,21 +1,28 @@
 import { Innertube } from "youtubei.js";
+import { getYouTubeCookieHeader } from "@/lib/youtube-auth";
 
-/** One lightweight session per warm Vercel function instance. Recreated after errors. */
-let instance: Promise<Innertube> | undefined;
+/** Reuse a lightweight session for search and a player-enabled session for stream extraction. */
+let searchSession: Promise<Innertube> | undefined;
+let playbackSession: Promise<Innertube> | undefined;
 
-export function youtube(): Promise<Innertube> {
-  if (!instance) {
-    instance = Innertube.create({
-      lang: "id",
-      location: "ID",
-      generate_session_locally: true,
-      // Direct media URLs requiring signature deciphering are not guaranteed.
-      retrieve_player: false,
-    }).catch((error: unknown) => {
-      instance = undefined;
-      throw error;
-    });
-  }
+export function youtube(options: {player?: boolean} = {}): Promise<Innertube> {
+  const player = Boolean(options.player);
+  const current = player ? playbackSession : searchSession;
+  if (current) return current;
+  const cookie = getYouTubeCookieHeader();
+  const instance = Innertube.create({
+    lang: "id",
+    location: "ID",
+    generate_session_locally: true,
+    ...(cookie ? {cookie} : {}),
+    retrieve_player: player
+  }).catch((error: unknown) => {
+    if (player) playbackSession = undefined;
+    else searchSession = undefined;
+    throw error;
+  });
+  if (player) playbackSession = instance;
+  else searchSession = instance;
   return instance;
 }
 

@@ -3,7 +3,20 @@
   "services": {
     "newpipe-web": {
       "root": "newpipe-web",
-      "framework": "nextjs"
+      "framework": "nextjs",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "ytdlp",
+          "format": "url",
+          "env": "YTDLP_INTERNAL_URL"
+        }
+      ]
+    },
+    "ytdlp": {
+      "root": "newpipe-web/ytdlp",
+      "runtime": "container",
+      "entrypoint": "Dockerfile"
     }
   },
   "rewrites": [

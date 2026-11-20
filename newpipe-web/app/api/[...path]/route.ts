@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { youtube, normalizeItem, normalizeItems, streamData, classifyError, stringValue, numberValue, bestImage, images } from "@/lib/youtube";
+import { tryYtDlp } from "@/lib/ytdlp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 type Obj = Record<string, any>;
 const VIDEO = /^[A-Za-z0-9_-]{11}$/;
@@ -65,6 +66,46 @@ function channelHeader(channel: any, id: string) {
   };
 }
 
+async function fallbackResponse(route:string, params:URLSearchParams): Promise<NextResponse|null> {
+  let kind: "video"|"search"|"playlist"|"channel";
+  let id: string | undefined;
+  let query: string | undefined;
+  if (["stream","details","audio","video-streams","subtitles"].includes(route)) {
+    const parsed = extractVideoId(params.get("id")?.trim() || "");
+    if (!parsed) return null;
+    kind="video"; id=parsed;
+  } else if (route === "search" || route === "trending") {
+    if (route === "search") {
+      query=text(params,"q",/^[\\s\\S]{1,160}$/) || undefined;
+    } else {
+      query=trendingTerms[params.get("category") || "trending_music"];
+    }
+    if (!query) return null;
+    kind="search";
+  } else if (route === "playlist") {
+    id=text(params,"id",PLAYLIST,100) || undefined;
+    if (!id) return null;
+    kind="playlist";
+  } else if (route === "channel" || route === "channel-videos") {
+    id=text(params,"id",CHANNEL,70) || undefined;
+    if (!id) return null;
+    kind="channel";
+  } else {
+    return null; // yt-dlp cannot provide a reliable related-videos or comments adapter.
+  }
+  const result=await tryYtDlp({kind, ...(id?{id}:{}), ...(query?{query}:{})});
+  if (!result.ok) return null;
+  const data=result.data;
+  if (kind==="video" && (!data?.id || !data?.name)) return null;
+  if (route==="audio") return success({id,audioStreams:data.audioStreams||[],source:"yt-dlp",fallbackUsed:true},0);
+  if (route==="video-streams") return success({id,videoStreams:data.videoStreams||[],videoOnlyStreams:data.videoOnlyStreams||[],source:"yt-dlp",fallbackUsed:true},0);
+  if (route==="details") return success({id,videoTitle:data.videoTitle,name:data.name,url:data.url,description:data.description,viewCount:data.viewCount,likeCount:data.likeCount,channelName:data.channelName,uploadDate:data.uploadDate,duration:data.duration,thumbnails:data.thumbnails||[],source:"yt-dlp",fallbackUsed:true},20);
+  if (route==="subtitles") return success({id,subtitles:data.subtitles||[],source:"yt-dlp",fallbackUsed:true},0);
+  if (route==="channel-videos") return success({...responseList(data.items||[],id||"","yt-dlp"),id,fallbackUsed:true},20);
+  if (route==="trending") return success({...data,category:params.get("category")||"trending_music",officialChart:false,source:"yt-dlp",fallbackUsed:true},30);
+  return success({...data,source:"yt-dlp",fallbackUsed:true},0);
+}
+
 export async function GET(request: NextRequest, context: {params: Promise<{path:string[]}>}) {
   const { path } = await context.params;
   if (path.length !== 1 || !validPaths.has(path[0])) return failure(404,"NOT_FOUND","Endpoint API tidak dikenal.");
@@ -72,7 +113,7 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
   const params = request.nextUrl.searchParams;
   try {
     if (route === "services") return success({services:[{name:"YouTube", id:0}],backend:"youtubei.js",version:"18.3.0"},3600);
-    const yt = await youtube();
+    const yt = await youtube({player:["stream","audio","video-streams"].includes(route)});
     if (route === "search") {
       const q = text(params,"q",/^[\s\S]{1,160}$/);
       if (!q) return failure(400,"INVALID_QUERY","Parameter q wajib diisi (maksimum 160 karakter).");
@@ -103,10 +144,16 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
       const info: any = route === "related" ? await yt.getInfo(id) : await yt.getBasicInfo(id);
       const playbackStatus = stringValue(info?.playability_status?.status).toUpperCase();
       if (playbackStatus === "LOGIN_REQUIRED") {
+        const fallback=await fallbackResponse(route,params);
+        if (fallback) return fallback;
         return failure(503, "UPSTREAM_BLOCKED",
-          "YouTube meminta login atau verifikasi anti-bot untuk permintaan pemutaran dari server ini. Pencarian mungkin tetap berfungsi.");
+          "YouTube.js dan fallback yt-dlp gagal: YouTube meminta login/verifikasi untuk permintaan pemutaran dari server Vercel.");
       }
       const base = streamData(info);
+      if (!base.streamingAvailable && ["stream","audio","video-streams"].includes(route)) {
+        const fallback=await fallbackResponse(route,params);
+        if (fallback) return fallback;
+      }
       if (!base.id || !base.name) {
         if (playbackStatus && playbackStatus !== "OK") {
           return failure(422, "UNPLAYABLE",
@@ -158,6 +205,8 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
     }
     return failure(404,"NOT_FOUND","Endpoint tidak ditemukan.");
   } catch (error: unknown) {
+    const fallback=await fallbackResponse(route,params);
+    if (fallback) return fallback;
     const problem = classifyError(error);
     // Never include session data, request headers or full upstream error payloads in public JSON.
     console.error("[youtubei]",route,problem.code,error instanceof Error? error.name : "UnknownError");

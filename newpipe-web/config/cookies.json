@@ -1,0 +1,6 @@
+{
+  "_notice": "TEMPLATE ONLY. Cookie grants account access. Prefer YOUTUBE_COOKIE in Vercel Secrets. Do not commit active cookies, even to a private repo.",
+  "enabled": false,
+  "cookie": "",
+  "cookies": []
+}

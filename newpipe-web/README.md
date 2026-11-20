@@ -1,76 +1,103 @@
-# NewPipe Web UI — YouTube.js v2 (Vercel)
+# NewPipe Web v2.1 — YouTube.js + yt-dlp fallback + Lyrics JSON
 
-> **Backend migrated:** This project now uses [YouTube.js / youtubei.js](https://github.com/LuanRT/YouTube.js) **18.3.0**, not the Java NewPipeExtractor. The original visual branding and public REST API paths are retained for client compatibility.
+Next.js web interface and compatible public REST API, deployed **100% in one Vercel project**, no VPS.
 
-## Architecture
+## Services
 
-**One Next.js service on Vercel, with no VPS, Java, Docker or external backend.**
+Repository root `vercel.json` defines:
+- **`newpipe-web`** — public Next.js interface and APIs (YouTube.js primary)
+- **`ytdlp`** — **private** Python/yt-dlp Container Runtime fallback, bound to the frontend as `YTDLP_INTERNAL_URL`. No public rewrite for this service.
 
-- Repository-root `vercel.json` defines the one public service `newpipe-web` rooted at `newpipe-web/`.
-- Frontend: existing responsive Explore, Trending, API Explorer, and Setup pages.
-- Backend: Next.js Node.js Route Handlers import `youtubei.js` on the server.
-- `newpipe-web/lib/youtube.ts`: session reuse and JSON normalization.
-- The old Express implementation in repository root is intentionally kept for historical compatibility but **is not deployed** by this Vercel configuration.
-- No Vercel Services bindings; no `EXTRACTOR_BASE_URL`.
+Calls to `/api/stream`, `/api/audio`, `/api/video-streams` fall back when YouTube.js fails or provides no stream formats. Search, playlist and channel endpoints also attempt fallback when YouTube.js throws. Comments and related videos are primary-library only because yt-dlp has no equivalent reliable adapter. Responses include `source` and `fallbackUsed:true` when fallback succeeds.
 
-## Deploy / redeploy
+**Limitations:** YouTube may block **both** engines from the same Vercel IP (`LOGIN_REQUIRED`, `UNPLAYABLE`). Cookies and yt-dlp do not guarantee working audio/video streams. Some URLs are short-lived or IP/session-bound. This API returns metadata and links but does not proxy or download media binaries. The Java NewPipeExtractor is no longer used.
 
-1. In **Vercel Dashboard**, open your existing GitHub-connected project for `TerserahGw/YT-DL-Api`.
-2. Keep the **Root Directory** set to the **repository root** (empty, `./`). This is required because the active `vercel.json` is at root. Do **not** select `newpipe-web`.
-3. If framework preset is configurable, use **Services** (with services config autodetected). Only one `newpipe-web` service should be listed; `backend` (Java container) was removed.
-4. In **Settings → Environment Variables**, delete any manually set `EXTRACTOR_BASE_URL` and `BACKEND_AUTHORIZATION`. Neither is used.
-5. GitHub pushes to `main` should trigger deployment. Otherwise select **Deployments → Redeploy** using the latest commit.
-6. Open your existing domain and test:
-   - `/api/health` → `ok: true`, `backend: "youtubei.js"`, `upstream: "unchecked"`
-   - `/api/search?q=Minecraft` → `items` array
-   - `/api/stream?id=dQw4w9WgXcQ` → video info (may report `UPSTREAM_BLOCKED`)
-   - `/api/services` → provider list
+### Vercel redeployment
 
-### API compatibility
+1. Open Vercel Dashboard → existing project for `TerserahGw/YT-DL-Api`.
+2. **Root Directory must be repository root (`./`)**, not `newpipe-web`; multi-service `vercel.json` is at repository root.
+3. Deploy latest `main`. Vercel should create a **public `newpipe-web`** and **private `ytdlp`** Docker-based service (Services/Container Runtime).
+4. Do **not** set `YTDLP_INTERNAL_URL` yourself. Vercel injects it from the binding.
+5. `EXTRACTOR_BASE_URL` and `BACKEND_AUTHORIZATION` from the old Java setup are obsolete; remove them from Vercel settings.
+6. Test `/api/health`, `/api/lyrics/sources`, `/api/search?q=Minecraft`, `/api/lyrics?track=Yellow&artist=Coldplay`, `/api/stream?id=dQw4w9WgXcQ`.
+7. Check Runtime Logs for both services if fallback is unreachable.
 
-The API names and common JSON fields are preserved; responses are **adapter compatible**, not byte-for-byte copies of NewPipeExtractor DTOs.
+The Docker service uses Python and yt-dlp plus its JavaScript challenge component on Node 22. Vercel containers may increase build time, cold-start latency, and service billing.
 
-| Endpoint | YouTube.js implementation | Notes |
-| --- | --- | --- |
-| `/api/search?q=...` | `yt.search` | `items`, `name`, `url`, `type`, `thumbnailUrl`, etc. |
-| `/api/stream?id=...` | `yt.getBasicInfo` | `audioStreams`, `videoStreams`, `videoOnlyStreams`, metadata; URLs only when genuinely provided |
-| `/api/details?id=...` | `yt.getBasicInfo` | metadata |
-| `/api/audio?id=...` | `yt.getBasicInfo` | `audioStreams` |
-| `/api/video-streams?id=...` | `yt.getBasicInfo` | `videoStreams`, `videoOnlyStreams` |
-| `/api/subtitles?id=...` | `yt.getBasicInfo` | `subtitles` |
-| `/api/related?id=...` | `yt.getInfo` | `items` derived from watch-next feed |
-| `/api/comments?id=...` | `yt.getComments` | first-page `comments` |
-| `/api/playlist?id=...` | `yt.getPlaylist` | `relatedItems`, metadata |
-| `/api/channel?id=%40handle` | `yt.resolveURL` + `getChannel` | handle and channel IDs |
-| `/api/channel-videos?id=%40handle` | `yt.getChannel` / `getVideos` | first page `items` |
-| `/api/trending?category=trending_music` | `yt.search` | **Search-based discovery, NOT official trending charts** |
-| `/api/services` | static supported provider | YouTube only |
-| `/api/health` | local readiness | Does **not** check upstream anti-bot access |
+## YouTube authentication (OPTIONAL)
 
-### Known limitations
+A **blank JSON template** is at `newpipe-web/config/cookies.json`:
 
-- **YouTube rate limits and `LOGIN_REQUIRED` remain possible, especially on shared cloud/Vercel IPs.** Switching from NewPipeExtractor does not guarantee bypass.
-- `youtubei.js` direct stream links may be missing, signature-protected, require Proof-of-Origin tokens, or use SABR. This implementation never fabricates links or promises download of any video.
-- `retrieve_player: false` speeds up serverless initialization but limits deciphering. A full streaming solution needs a separate approved player/attestation implementation and appropriate rights.
-- Search pagination, playlist pagination, and comment pagination are **not implemented**. `hasNextPage: false` means "this API exposes first page only" rather than a definitive end of YouTube results.
-- This is a **YouTube-only** backend (NewPipeExtractor supported multiple sites).
-- API endpoints are public, so add Vercel Firewall/rate limits if your project is exposed broadly. Avoid aggressive retries against YouTube.
-- Stream URLs can expire or be bound to the server's egress IP and fail in browsers.
-- YouTube.js is unofficial and unaffiliated with YouTube. Respect rights and platform usage terms.
+```json
+{
+  "enabled": false,
+  "cookie": "",
+  "cookies": []
+}
+```
 
-## Local dev (optional)
+To use the file **only after you first make the GitHub repository private**, set `enabled: true` and provide a Cookie header in the `cookie` field. The `cookies` array is an alternative that accepts `{ "name": "...", "value": "..." }` entries. This configuration is used server-side by YouTube.js, and is passed to the private yt-dlp fallback for the same request. The cookie is not exposed via `/api/health`, `/api/services`, or JSON results.
+
+**More secure, strongly recommended:** leave `config/cookies.json` blank, set the secret **`YOUTUBE_COOKIE`** in Vercel Project → Settings → Environment Variables (server-only). Or use `YOUTUBE_COOKIES_JSON` as a JSON string `{"cookie":"..."}`. Precedence is `YOUTUBE_COOKIE` → `YOUTUBE_COOKIES_JSON` → JSON file. Never prefix these with `NEXT_PUBLIC_`.
+
+**Security warnings:**
+- Cookies are login credentials. **A private GitHub repository still retains secrets in commit history, clones, builds, and deployment artifacts.** Prefer Vercel Environment Variables. Making a repo private after pushing secrets does not erase older public commits.
+- **Make the repository private before entering any cookies.** Do not paste cookies in ChatGPT or a GitHub issue.
+- Use a separate low-privilege account, not your primary account; refresh or revoke sessions as needed.
+- Cookie-based authentication may trigger account challenges or limitations. Do not run aggressive retries.
+
+See https://ytjs.dev/guide/authentication and https://github.com/yt-dlp/yt-dlp/wiki/Extractors.
+
+## Lyrics API (the supplied original `lirik.js` module)
+
+The provided full `lirik.js` lives at `newpipe-web/lib/lyrics/lirik.js` and powers two server endpoints:
+
+### `GET /api/lyrics`
+
+Query parameters:
+- `track` — song title (recommended together with `artist`)
+- `artist` — singer/band (optional if `q` is given)
+- `q` — free-text song query instead of `track`
+- `album` — optional matching hint
+- `duration` — track duration in **seconds** (optional)
+- `source` — `auto` (default) or one of `lrclib`, `musixmatch`, `netease`, `qq`, `kugou`, `genius`, `lyricsovh`
+
+Example:
+
+```http
+GET /api/lyrics?track=Yellow&artist=Coldplay
+```
+
+The response is JSON with: `ok`, `source`, `sourceUrl`, `track`, `synced`, `wordLevel`, `lines`, `words`, `plain`, `formats` (`lrc`, `enhancedLrc`, `plain`), and `attempts`. Timing fields `time`, `endTime`, `words[].start`, and `words[].end` are seconds. Word timing is returned only if upstream data provides it; it is not fabricated.
+
+### `GET /api/lyrics/sources`
+
+Returns JSON listing all 7 provider IDs, names, websites and supported lyric formats.
+
+Sourcing is best-effort. Musixmatch, Genius, and other providers may restrict access; not every track has synchronized or per-word lyrics. Respect the rights and terms of source providers. Vercel Function timeout and rate limits apply.
+
+## Existing endpoints retained
+
+`/api/search`, `/api/stream`, `/api/details`, `/api/audio`, `/api/video-streams`, `/api/subtitles`, `/api/related`, `/api/comments`, `/api/playlist`, `/api/channel`, `/api/channel-videos`, `/api/trending`, `/api/services`, `/api/health`.
+
+Their common JSON fields remain compatible with the previous web UI, not guaranteed byte-for-byte equivalent to Java/NewPipe's original API.
+
+## Local development / testing
 
 ```sh
 cd newpipe-web
 npm install
+npm run test:lyrics
 npm run typecheck
 npm run build
 npm run dev
 ```
 
-Then open http://localhost:3000. No extra backend required.
+Local Next dev without running the Python yt-dlp container has **YouTube.js-only** behavior. For the complete Services topology, use `vercel dev` at repository root with local Docker.
 
-## Credits and license
+## Credits
 
-- YouTube.js (MIT): https://github.com/LuanRT/YouTube.js
-- Original NewPipeExtractor (not used in v2): https://github.com/TeamNewPipe/NewPipeExtractor
+- User-provided multi-provider `lirik.js` module
+- [YouTube.js](https://github.com/LuanRT/YouTube.js)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- [Vercel Services](https://vercel.com/docs/services)
