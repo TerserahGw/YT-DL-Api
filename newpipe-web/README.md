@@ -8,9 +8,9 @@ Repository root `vercel.json` defines:
 - **`newpipe-web`** — public Next.js interface and APIs (YouTube.js primary)
 - **`ytdlp`** — **private** Python/yt-dlp Container Runtime fallback, bound to the frontend as `YTDLP_INTERNAL_URL`. No public rewrite for this service.
 
-Calls to `/api/stream`, `/api/audio`, `/api/video-streams` fall back when YouTube.js fails or provides no stream formats. Search, playlist and channel endpoints also attempt fallback when YouTube.js throws. Comments and related videos are primary-library only because yt-dlp has no equivalent reliable adapter. Responses include `source` and `fallbackUsed:true` when fallback succeeds.
+Calls to `/api/stream`, `/api/audio`, `/api/video-streams` first run YouTube.js signature deciphering, and fall back when it fails or provides **no usable direct stream URL** (even if format metadata exists). Search, playlist and channel endpoints also attempt fallback when YouTube.js throws. Comments and related videos are primary-library only because yt-dlp has no equivalent reliable adapter. Responses include `source` and `fallbackUsed:true` when fallback succeeds.
 
-**Limitations:** YouTube may block **both** engines from the same Vercel IP (`LOGIN_REQUIRED`, `UNPLAYABLE`). Cookies and yt-dlp do not guarantee working audio/video streams. Some URLs are short-lived or IP/session-bound. This API returns metadata and links but does not proxy or download media binaries. The Java NewPipeExtractor is no longer used.
+**Limitations:** YouTube may block **both** engines from the same Vercel IP (`LOGIN_REQUIRED`, `UNPLAYABLE`). Cookies and yt-dlp do not guarantee working audio/video streams. Some URLs are short-lived or IP/session-bound. The stream response distinguishes `formatCount`, `directStreamsAvailable`, `manifestAvailable`, and `streamingAvailable`; a format entry with `url: null` is **not** a direct download link. This API returns metadata and links but does not proxy or download media binaries. The Java NewPipeExtractor is no longer used.
 
 ### Vercel redeployment
 

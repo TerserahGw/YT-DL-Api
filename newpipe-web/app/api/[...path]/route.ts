@@ -149,8 +149,13 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
         return failure(503, "UPSTREAM_BLOCKED",
           "YouTube.js dan fallback yt-dlp gagal: YouTube meminta login/verifikasi untuk permintaan pemutaran dari server Vercel.");
       }
-      const base = streamData(info);
-      if (!base.streamingAvailable && ["stream","audio","video-streams"].includes(route)) {
+      const base = await streamData(info, yt.session.player);
+      // A format list with null URLs is not a usable direct stream.
+      const needed = route === "audio" ? base.audioStreams
+        : route === "video-streams" ? [...base.videoStreams, ...base.videoOnlyStreams]
+        : [...base.audioStreams, ...base.videoStreams, ...base.videoOnlyStreams];
+      const directUrls = needed.some((format: {url?: string|null}) => Boolean(format.url));
+      if (!directUrls && ["stream","audio","video-streams"].includes(route)) {
         const fallback=await fallbackResponse(route,params);
         if (fallback) return fallback;
       }
@@ -164,7 +169,11 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
       }
       // Metadata can still be valid when playback is UNPLAYABLE. Preserve it for
       // /api/stream and /api/details, with streamingAvailable:false and playbackStatus.
-      if (route === "stream") return success(base,0);
+      if (route === "stream") return success({
+        ...base,
+        fallbackAttempted: !directUrls,
+        ...(!directUrls ? {warning:"Format berhasil ditemukan, tetapi belum ada URL langsung. Jika HLS tersedia, tautannya bisa bersifat sementara atau terikat IP server."} : {})
+      },0);
       if (route === "details") return success({
         id, videoTitle:base.videoTitle, name:base.name, url:base.url,
         description:base.description, viewCount:base.viewCount, likeCount:base.likeCount,
@@ -172,8 +181,8 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
         duration:base.duration, thumbnails:base.thumbnails,
         source:"youtubei.js"
       },20);
-      if (route === "audio") return success({id, audioStreams:base.audioStreams, source:"youtubei.js"},0);
-      if (route === "video-streams") return success({id, videoStreams:base.videoStreams, videoOnlyStreams:base.videoOnlyStreams, source:"youtubei.js"},0);
+      if (route === "audio") return success({id, audioStreams:base.audioStreams, directStreamsAvailable:base.audioStreams.some((f:{url?:string|null})=>Boolean(f.url)), fallbackAttempted:!directUrls, source:"youtubei.js"},0);
+      if (route === "video-streams") return success({id, videoStreams:base.videoStreams, videoOnlyStreams:base.videoOnlyStreams, directStreamsAvailable:directUrls, fallbackAttempted:!directUrls, source:"youtubei.js"},0);
       if (route === "subtitles") {
         const raw = info.captions?.caption_tracks;
         const tracks = Array.isArray(raw) ? raw : [];

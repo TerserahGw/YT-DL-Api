@@ -113,18 +113,28 @@ export function normalizeItems(raw: unknown): Node[] {
   }
   return result;
 }
-export function streamData(info: unknown): Node {
+export async function streamData(info: unknown, player?: any): Promise<Node> {
   const obj = safe(info);
   const basic = safe(obj.basic_info);
   const channel = safe(basic.channel);
   const thumb = images(basic.thumbnail || basic.thumbnails);
   const fmts = safe(obj.streaming_data);
   const full = [...(Array.isArray(fmts.formats) ? fmts.formats : []), ...(Array.isArray(fmts.adaptive_formats) ? fmts.adaptive_formats : [])];
-  const serializeFormat = (entry: any) => {
+  const serializeFormat = async (entry: any) => {
     const format = safe(entry);
     const mime = stringValue(format.mime_type);
     const video = Boolean(format.has_video) || mime.startsWith("video/");
     const audio = Boolean(format.has_audio) || mime.startsWith("audio/");
+    let directUrl = safeUrl(format.url);
+    if (player && typeof format.decipher === "function") {
+      try {
+        // Signature and nsig transformation may be required even when format.url exists.
+        const resolved = await format.decipher(player);
+        directUrl = safeUrl(resolved);
+      } catch {
+        // Keep the original URL only if YouTube provided one.
+      }
+    }
     return {
       itag: format.itag ?? null,
       format: mime || null,
@@ -135,16 +145,20 @@ export function streamData(info: unknown): Node {
       fps: numberValue(format.fps),
       hasAudio: audio, hasVideo: video,
       codec: mime.includes("codecs=") ? mime.split("codecs=")[1].replaceAll('"', "") : null,
-      // Do not invent URLs: YouTube may return cipher-only or SABR formats.
-      url: safeUrl(format.url), content: safeUrl(format.url),
+      // Never manufacture URLs: some YouTube formats are SABR-only or lack a token.
+      url: directUrl, content: directUrl,
     };
   };
-  const formats = full.map(serializeFormat);
+  const formats = await Promise.all(full.slice(0, 100).map(serializeFormat));
   const audioStreams = formats.filter(f => f.hasAudio && !f.hasVideo);
   const videoStreams = formats.filter(f => f.hasVideo && f.hasAudio);
   const videoOnlyStreams = formats.filter(f => f.hasVideo && !f.hasAudio);
   const videoId = stringValue(basic.id);
   const name = stringValue(basic.title);
+  const hasDirectUrl = formats.some(f => f.url !== null);
+  const hlsUrl = safeUrl(fmts.hls_manifest_url);
+  const dashUrl = safeUrl(fmts.dash_manifest_url);
+  const hasManifest = Boolean(hlsUrl || dashUrl);
   return {
     id: videoId, url: videoId ? "https://www.youtube.com/watch?v=" + videoId : null,
     name, videoTitle: name, title: name,
@@ -159,9 +173,12 @@ export function streamData(info: unknown): Node {
     thumbnailUrl: thumb.length ? thumb[thumb.length-1].url : null,
     thumbnails: thumb,
     audioStreams, videoStreams, videoOnlyStreams,
-    hlsManifestUrl: safeUrl(fmts.hls_manifest_url),
-    dashManifestUrl: safeUrl(fmts.dash_manifest_url),
-    streamingAvailable: formats.length > 0,
+    hlsManifestUrl: hlsUrl,
+    dashManifestUrl: dashUrl,
+    formatCount: formats.length,
+    directStreamsAvailable: hasDirectUrl,
+    manifestAvailable: hasManifest,
+    streamingAvailable: hasDirectUrl || hasManifest,
     playbackStatus: stringValue(safe(obj.playability_status).status) || null,
     source: "youtubei.js"
   };
