@@ -76,7 +76,7 @@ async function fallbackResponse(route:string, params:URLSearchParams): Promise<N
     kind="video"; id=parsed;
   } else if (route === "search" || route === "trending") {
     if (route === "search") {
-      query=text(params,"q",/^[\\s\\S]{1,160}$/) || undefined;
+      query=text(params,"q",/^[\s\S]{1,160}$/) || undefined;
     } else {
       query=trendingTerms[params.get("category") || "trending_music"];
     }
