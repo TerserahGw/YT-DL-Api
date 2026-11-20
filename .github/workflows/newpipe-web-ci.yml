@@ -29,3 +29,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m py_compile ytdlp/server.py
+      - name: Build yt-dlp fallback container
+        run: docker build -f ytdlp/Dockerfile -t newpipe-ytdlp-test ytdlp
+      - name: Smoke test fallback runtime
+        run: docker run --rm --entrypoint /opt/venv/bin/python newpipe-ytdlp-test -c "import yt_dlp, fastapi, server; print('fallback imports OK')"
+
