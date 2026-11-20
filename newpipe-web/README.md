@@ -1,4 +1,4 @@
-# NewPipe Web v2.1 — YouTube.js + yt-dlp fallback + Lyrics JSON
+# NewPipe Web v2.2 — YouTube.js + yt-dlp fallback + Lyrics JSON + Signed Media Proxy
 
 Next.js web interface and compatible public REST API, deployed **100% in one Vercel project**, no VPS.
 
@@ -10,7 +10,7 @@ Repository root `vercel.json` defines:
 
 Calls to `/api/stream`, `/api/audio`, `/api/video-streams` first run YouTube.js signature deciphering, and fall back when it fails or provides **no usable direct stream URL** (even if format metadata exists). Search, playlist and channel endpoints also attempt fallback when YouTube.js throws. Comments and related videos are primary-library only because yt-dlp has no equivalent reliable adapter. Responses include `source` and `fallbackUsed:true` when fallback succeeds.
 
-**Limitations:** YouTube may block **both** engines from the same Vercel IP (`LOGIN_REQUIRED`, `UNPLAYABLE`). Cookies and yt-dlp do not guarantee working audio/video streams. Some URLs are short-lived or IP/session-bound. The stream response distinguishes `formatCount`, `directStreamsAvailable`, `manifestAvailable`, and `streamingAvailable`; a format entry with `url: null` is **not** a direct download link. This API returns metadata and links but does not proxy or download media binaries. The Java NewPipeExtractor is no longer used.
+**Limitations:** YouTube may block **both** engines from the same Vercel IP (`LOGIN_REQUIRED`, `UNPLAYABLE`). Cookies and yt-dlp do not guarantee working audio/video streams. Some URLs are short-lived or IP/session-bound. The stream response distinguishes `formatCount`, `directStreamsAvailable`, `manifestAvailable`, and `streamingAvailable`; a format entry with `url: null` is **not** a direct download link. The optional /api/media endpoint streams byte ranges of supported Google video playback URLs through Vercel when MEDIA_PROXY_SECRET is configured; it does not permanently download or store media. The Java NewPipeExtractor is no longer used.
 
 ### Vercel redeployment
 
@@ -81,6 +81,36 @@ Sourcing is best-effort. Musixmatch, Genius, and other providers may restrict ac
 `/api/search`, `/api/stream`, `/api/details`, `/api/audio`, `/api/video-streams`, `/api/subtitles`, `/api/related`, `/api/comments`, `/api/playlist`, `/api/channel`, `/api/channel-videos`, `/api/trending`, `/api/services`, `/api/health`.
 
 Their common JSON fields remain compatible with the previous web UI, not guaranteed byte-for-byte equivalent to Java/NewPipe's original API.
+
+
+## Same-origin signed media proxy (v2.2)
+
+The API can return **same-domain** media URLs, avoiding direct browser requests to IP-bound `googlevideo.com` URLs. A stream entry looks like:
+
+```json
+{
+  "itag": 140,
+  "url": "https://your-project.vercel.app/api/media?id=VIDEO_ID&itag=140&engine=youtubei&expires=...&sig=...",
+  "content": "https://your-project.vercel.app/api/media?id=VIDEO_ID&itag=140&engine=youtubei&expires=...&sig=...",
+  "proxied": true
+}
+```
+
+### Setup (mandatory)
+
+1. In **Vercel → Project → Settings → Environment Variables** create `MEDIA_PROXY_SECRET` (Production), using a strong **random value of at least 32 characters**. Generate on Android with Termux: `openssl rand -hex 32`. **Never commit the secret to GitHub**.
+2. Redeploy. Check `/api/health` → `mediaProxy.enabled: true`.
+3. Re-open `/api/stream?id=MwpMEbgC7DA`, `/api/audio?id=MwpMEbgC7DA`, or `/api/video-streams?id=MwpMEbgC7DA`. Any supported direct format will now contain a same-origin `/api/media?...sig=...` URL.
+4. Test one generated URL in a browser or media player, including seeking (Range requests). The server responds with HTTP **206 Partial Content**, relays at most **2 MiB** per request and honors single-byte-range requests. Signed URLs expire after one hour; call `/api/stream` again to renew.
+
+**Important limits and security:**
+- /api/media **only** accepts signed IDs/itags and resolves provider URLs internally. It is not an open arbitrary-URL proxy. Its signatures are **temporary bearer links**: anyone with a signed link can consume your bandwidth during its validity.
+- The public /api/stream endpoint can still mint links. Add rate limiting, access control, usage budgets, and a Vercel Firewall in front of public deployments. The implementation does not include a distributed rate limiter.
+- IP binding may **still fail** even when proxying: two separate Vercel invocations or services can use different egress IPs. An upstream **403 UPSTREAM_IP_BLOCKED** cannot be solved reliably without stable egress or permitted playback mechanisms.
+- Every chunk makes a metadata lookup and upstream request. This increases latency, upstream request volume, egress bandwidth and Vercel execution costs. Vercel Function execution time is limited (set to 300 seconds, subject to plan/Fluid Compute availability). Some media players may not support chunked Range behavior; unsupported upstream byte ranges return a clear 502.
+- HLS/DASH manifests and their segments are **not yet proxied**; `hlsManifestUrl` stays a direct upstream URL. Only direct format URLs are rewritten. These streams can be expired or DRM/SABR-protected; the proxy does not make them available.
+- Do not distribute media without appropriate rights and authorization; be mindful of YouTube's terms of service.
+- If `MEDIA_PROXY_SECRET` is absent, `/api/media` is disabled and direct URLs remain unchanged. No cookies or provider URLs are exposed by signed proxy URLs.
 
 ## Local development / testing
 

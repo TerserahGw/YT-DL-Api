@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { youtube, normalizeItem, normalizeItems, streamData, classifyError, stringValue, numberValue, bestImage, images } from "@/lib/youtube";
 import { tryYtDlp } from "@/lib/ytdlp";
+import { makeMediaProxyUrls } from "@/lib/media-proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +67,7 @@ function channelHeader(channel: any, id: string) {
   };
 }
 
-async function fallbackResponse(route:string, params:URLSearchParams): Promise<NextResponse|null> {
+async function fallbackResponse(route:string, params:URLSearchParams, origin:string): Promise<NextResponse|null> {
   let kind: "video"|"search"|"playlist"|"channel";
   let id: string | undefined;
   let query: string | undefined;
@@ -103,13 +104,14 @@ async function fallbackResponse(route:string, params:URLSearchParams): Promise<N
       : [...(data.audioStreams||[]),...(data.videoStreams||[]),...(data.videoOnlyStreams||[])];
     if (!Array.isArray(requested) || !requested.some((f:{url?:string|null})=>typeof f?.url==="string" && f.url.startsWith("https://"))) return null;
   }
-  if (route==="audio") return success({id,audioStreams:data.audioStreams||[],source:"yt-dlp",fallbackUsed:true},0);
-  if (route==="video-streams") return success({id,videoStreams:data.videoStreams||[],videoOnlyStreams:data.videoOnlyStreams||[],source:"yt-dlp",fallbackUsed:true},0);
+  const media = kind === "video" && id ? makeMediaProxyUrls(data,origin,id,"ytdlp") : data;
+  if (route==="audio") return success({id,audioStreams:media.audioStreams||[],proxy:media.proxy,source:"yt-dlp",fallbackUsed:true},0);
+  if (route==="video-streams") return success({id,videoStreams:media.videoStreams||[],videoOnlyStreams:media.videoOnlyStreams||[],proxy:media.proxy,source:"yt-dlp",fallbackUsed:true},0);
   if (route==="details") return success({id,videoTitle:data.videoTitle,name:data.name,url:data.url,description:data.description,viewCount:data.viewCount,likeCount:data.likeCount,channelName:data.channelName,uploadDate:data.uploadDate,duration:data.duration,thumbnails:data.thumbnails||[],source:"yt-dlp",fallbackUsed:true},20);
   if (route==="subtitles") return success({id,subtitles:data.subtitles||[],source:"yt-dlp",fallbackUsed:true},0);
   if (route==="channel-videos") return success({...responseList(data.items||[],id||"","yt-dlp"),id,fallbackUsed:true},20);
   if (route==="trending") return success({...data,category:params.get("category")||"trending_music",officialChart:false,source:"yt-dlp",fallbackUsed:true},30);
-  return success({...data,source:"yt-dlp",fallbackUsed:true},0);
+  return success({...media,source:"yt-dlp",fallbackUsed:true},0);
 }
 
 export async function GET(request: NextRequest, context: {params: Promise<{path:string[]}>}) {
@@ -150,7 +152,7 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
       const info: any = route === "related" ? await yt.getInfo(id) : await yt.getBasicInfo(id);
       const playbackStatus = stringValue(info?.playability_status?.status).toUpperCase();
       if (playbackStatus === "LOGIN_REQUIRED") {
-        const fallback=await fallbackResponse(route,params);
+        const fallback=await fallbackResponse(route,params,request.nextUrl.origin);
         if (fallback) return fallback;
         return failure(503, "UPSTREAM_BLOCKED",
           "YouTube.js dan fallback yt-dlp gagal: YouTube meminta login/verifikasi untuk permintaan pemutaran dari server Vercel.");
@@ -162,7 +164,7 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
         : [...base.audioStreams, ...base.videoStreams, ...base.videoOnlyStreams];
       const directUrls = needed.some((format: {url?: string|null}) => Boolean(format.url));
       if (!directUrls && ["stream","audio","video-streams"].includes(route)) {
-        const fallback=await fallbackResponse(route,params);
+        const fallback=await fallbackResponse(route,params,request.nextUrl.origin);
         if (fallback) return fallback;
       }
       if (!base.id || !base.name) {
@@ -175,8 +177,10 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
       }
       // Metadata can still be valid when playback is UNPLAYABLE. Preserve it for
       // /api/stream and /api/details, with streamingAvailable:false and playbackStatus.
+      const proxied = ["stream","audio","video-streams"].includes(route)
+        ? makeMediaProxyUrls(base,request.nextUrl.origin,id,"youtubei") : base;
       if (route === "stream") return success({
-        ...base,
+        ...proxied,
         fallbackAttempted: !directUrls,
         ...(!directUrls ? {warning:"Format berhasil ditemukan, tetapi belum ada URL langsung. Jika HLS tersedia, tautannya bisa bersifat sementara atau terikat IP server."} : {})
       },0);
@@ -187,8 +191,8 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
         duration:base.duration, thumbnails:base.thumbnails,
         source:"youtubei.js"
       },20);
-      if (route === "audio") return success({id, audioStreams:base.audioStreams, directStreamsAvailable:base.audioStreams.some((f:{url?:string|null})=>Boolean(f.url)), fallbackAttempted:!directUrls, source:"youtubei.js"},0);
-      if (route === "video-streams") return success({id, videoStreams:base.videoStreams, videoOnlyStreams:base.videoOnlyStreams, directStreamsAvailable:directUrls, fallbackAttempted:!directUrls, source:"youtubei.js"},0);
+      if (route === "audio") return success({id, audioStreams:proxied.audioStreams, proxy:proxied.proxy, directStreamsAvailable:base.audioStreams.some((f:{url?:string|null})=>Boolean(f.url)), fallbackAttempted:!directUrls, source:"youtubei.js"},0);
+      if (route === "video-streams") return success({id, videoStreams:proxied.videoStreams, videoOnlyStreams:proxied.videoOnlyStreams, proxy:proxied.proxy, directStreamsAvailable:directUrls, fallbackAttempted:!directUrls, source:"youtubei.js"},0);
       if (route === "subtitles") {
         const raw = info.captions?.caption_tracks;
         const tracks = Array.isArray(raw) ? raw : [];
@@ -220,7 +224,7 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
     }
     return failure(404,"NOT_FOUND","Endpoint tidak ditemukan.");
   } catch (error: unknown) {
-    const fallback=await fallbackResponse(route,params);
+    const fallback=await fallbackResponse(route,params,request.nextUrl.origin);
     if (fallback) return fallback;
     const problem = classifyError(error);
     // Never include session data, request headers or full upstream error payloads in public JSON.

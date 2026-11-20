@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { proxyIsEnabled } from "@/lib/media-proxy";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
     version:"18.3.0",upstream:"unchecked",
     fallback:{engine:"yt-dlp",configured,status:fallbackStatus},
     lyrics:{available:true,endpoint:"/api/lyrics",sources:"/api/lyrics/sources"},
+    mediaProxy:{enabled:proxyIsEnabled(),endpoint:"/api/media",requiresSignature:true,range:true},
     note:"Health checks service readiness only. YouTube may block streaming even when both engines are online."
   },{headers:{"Cache-Control":"no-store"}});
 }

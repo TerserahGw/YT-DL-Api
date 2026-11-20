@@ -22,7 +22,7 @@ const API_ENDPOINTS = [
   { path: "/api/channel-videos?id=%40GoogleDevelopers", title: "Channel videos", note: "Video channel" },
   { path: "/api/trending?category=trending_music", title: "Trending", note: "Musik, gaming, atau film" },
   { path: "/api/services", title: "Services", note: "Daftar layanan yang didukung" },
-  { path: "/api/health", title: "Health", note: "Kesiapan layanan YouTube.js" },
+  { path: "/api/health", title: "Health", note: "Kesiapan layanan YouTube.js dan status proxy" },
   { path: "/api/lyrics?track=Yellow&artist=Coldplay", title: "Lyrics JSON", note: "Lirik multisumber, timestamp baris dan per kata" },
   { path: "/api/lyrics/sources", title: "Lyrics sources", note: "Daftar 7 penyedia lirik" }
 ];
@@ -198,7 +198,7 @@ export default function HomePage() {
     <main className="main">
       <header className="topbar">
         <div className="topbar-left"><button className="menu-toggle" onClick={()=>setMobileMenu(!mobileMenu)} aria-label="Toggle menu">☰</button><span className="breadcrumbs">Workspace <span>/</span> {mode==="discover"?"Explore":mode==="trending"?"Trending":mode==="api"?"API Explorer":"Setup"}</span></div>
-        <div className="header-right"><span className="header-version">v2.1.0</span><span className={"connection " + health}><span className={"status-dot "+health}/>{health==="online"?"Backend online":health==="unconfigured"?"Needs setup":health==="checking"?"Checking":"Backend offline"}</span></div>
+        <div className="header-right"><span className="header-version">v2.2.0</span><span className={"connection " + health}><span className={"status-dot "+health}/>{health==="online"?"Backend online":health==="unconfigured"?"Needs setup":health==="checking"?"Checking":"Backend offline"}</span></div>
       </header>
       <div className="content">
         {mode==="discover" && <>
