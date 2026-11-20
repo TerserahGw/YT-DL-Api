@@ -100,7 +100,10 @@ def shape_video(info):
         "audioStreams":audios,"videoStreams":video_both,"videoOnlyStreams":video_only,
         "hlsManifestUrl":valid_url(info.get("manifest_url")),
         "dashManifestUrl":None,
-        "streamingAvailable":bool(formats), "playbackStatus":"OK" if formats else "UNPLAYABLE",
+        "directStreamsAvailable":any(f["url"] for f in formats),
+        "manifestAvailable":bool(valid_url(info.get("manifest_url"))),
+        "streamingAvailable":any(f["url"] for f in formats) or bool(valid_url(info.get("manifest_url"))),
+        "playbackStatus":"OK" if formats else "UNPLAYABLE",
         "source":"yt-dlp"
     }
 

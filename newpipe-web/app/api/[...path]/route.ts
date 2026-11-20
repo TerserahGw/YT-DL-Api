@@ -97,6 +97,12 @@ async function fallbackResponse(route:string, params:URLSearchParams): Promise<N
   if (!result.ok) return null;
   const data=result.data;
   if (kind==="video" && (!data?.id || !data?.name)) return null;
+  if (kind==="video" && ["stream","audio","video-streams"].includes(route)) {
+    const requested = route==="audio" ? data.audioStreams
+      : route==="video-streams" ? [...(data.videoStreams||[]),...(data.videoOnlyStreams||[])]
+      : [...(data.audioStreams||[]),...(data.videoStreams||[]),...(data.videoOnlyStreams||[])];
+    if (!Array.isArray(requested) || !requested.some((f:{url?:string|null})=>typeof f?.url==="string" && f.url.startsWith("https://"))) return null;
+  }
   if (route==="audio") return success({id,audioStreams:data.audioStreams||[],source:"yt-dlp",fallbackUsed:true},0);
   if (route==="video-streams") return success({id,videoStreams:data.videoStreams||[],videoOnlyStreams:data.videoOnlyStreams||[],source:"yt-dlp",fallbackUsed:true},0);
   if (route==="details") return success({id,videoTitle:data.videoTitle,name:data.name,url:data.url,description:data.description,viewCount:data.viewCount,likeCount:data.likeCount,channelName:data.channelName,uploadDate:data.uploadDate,duration:data.duration,thumbnails:data.thumbnails||[],source:"yt-dlp",fallbackUsed:true},20);
