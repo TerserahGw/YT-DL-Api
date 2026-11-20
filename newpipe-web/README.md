@@ -1,4 +1,4 @@
-# NewPipe Web v2.2.1 — YouTube.js + yt-dlp fallback + Lyrics JSON + Signed Media Proxy
+# NewPipe Web v2.2.2 — YouTube.js + yt-dlp fallback + Lyrics JSON + Signed Media Proxy
 
 Next.js web interface and compatible public REST API, deployed **100% in one Vercel project**, no VPS.
 
@@ -119,6 +119,12 @@ Googlevideo can serve a bounded byte interval via the query parameter \`range=st
 The new \`/api/media\` handler tries query-based and header-based byte ranges, validates \`Content-Range\` when 206 is returned, and accepts 200 **only** when a known total media length and exact bounded \`Content-Length\` prove that the requested interval was served. It never substitutes bytes from the start of a whole file for a nonzero seek offset. A bounded readable stream caps forwarded bytes at 2 MiB. \`X-Media-Range-Mode\` identifies the successful strategy (\`http-206\`, \`youtube-200\`, \`full-200-prefix\`). If neither strategy can be verified, it returns \`UPSTREAM_RANGE_UNVERIFIED\`.
 
 If the upstream still rejects the egress IP or returns an ambiguous response, the proxy cannot safely fix the data without a stable source connection. Add Vercel Firewall and monitor traffic, as every chunk can cost bandwidth and extraction time.
+
+### Redirect compatibility fix (v2.2.2)
+
+Googlevideo may respond with HTTP **302** to another media edge even for a correct URL and byte-range request. The proxy now follows up to five 301/302/303/307/308 redirects, revalidating **every** destination as an HTTPS `*.googlevideo.com/videoplayback` URL with no custom port or credentials. It keeps HTTP Range and the original unsigned `range=` query when the redirect drops it, then applies the existing 200/206 byte-range verification. It also follows safe redirects during media size probes. The `X-Media-Redirects` response header reports how many hops were followed.
+
+Any redirect to an unknown domain, redirect loop, exhausted redirects, upstream access denial, or nonmedia response is rejected rather than returned to the client. No upstream signed URL is exposed in logs or client errors. **This does not guarantee success if Vercel's extraction and streaming IPs differ or Googlevideo blocks the deployment.**
 
 ## Local development / testing
 

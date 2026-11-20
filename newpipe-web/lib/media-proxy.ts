@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isMediaPlaybackUrl } from "@/lib/media-redirect";
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const FORMAT_ID = /^[A-Za-z0-9_.-]{1,60}$/;
@@ -18,17 +19,7 @@ function message(videoId: string, itag: string, engine: MediaEngine, expires: nu
 function signature(videoId: string, itag: string, engine: MediaEngine, expires: number, secret: string) {
   return createHmac("sha256", secret).update(message(videoId, itag, engine, expires)).digest("hex");
 }
-export function isMediaHost(rawUrl: string): boolean {
-  try {
-    const uri = new URL(rawUrl);
-    const hostname = uri.hostname.toLowerCase();
-    return uri.protocol === "https:" && !uri.username && !uri.password &&
-      (hostname === "googlevideo.com" || hostname.endsWith(".googlevideo.com")) &&
-      uri.pathname.startsWith("/videoplayback");
-  } catch {
-    return false;
-  }
-}
+export const isMediaHost = isMediaPlaybackUrl;
 export function verifyProxyRequest(search: URLSearchParams):
   | { videoId: string; itag: string; engine: MediaEngine }
   | null {

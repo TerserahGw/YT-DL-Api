@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { youtube, streamData, stringValue } from "@/lib/youtube";
 import { tryYtDlp } from "@/lib/ytdlp";
 import { isMediaHost, proxyIsEnabled, verifyProxyRequest } from "@/lib/media-proxy";
+import { fetchMediaFollowingSafeRedirects } from "@/lib/media-redirect";
 import {
   boundedMediaStream, interpretMediaRange, mediaLengthHint,
   parseMediaRange, rangedGoogleVideoUrl
@@ -59,22 +60,20 @@ const validSize = (raw: string | null): number | null => {
 /** Some URLs do not include clen. Probe metadata only; never download the whole video. */
 async function probeMediaSize(url: string): Promise<number | null> {
   try {
-    const head = await fetch(url, {
-      method: "HEAD", redirect: "manual", cache: "no-store",
-      signal: AbortSignal.timeout(6500)
-    });
-    if (head.status === 200) {
-      const length = validSize(head.headers.get("content-length"));
+    const result = await fetchMediaFollowingSafeRedirects(url, { method: "HEAD", timeoutMs: 6500 });
+    if (result.ok) {
+      const { response } = result;
+      const length = response.status === 200 ? validSize(response.headers.get("content-length")) : null;
+      await response.body?.cancel().catch(() => {});
       if (length) return length;
     }
   } catch { /* HEAD is frequently disallowed; try one-byte GET. */ }
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { Range: "bytes=0-0", "Accept-Encoding": "identity" },
-      redirect: "manual", cache: "no-store",
-      signal: AbortSignal.timeout(6500)
+    const result = await fetchMediaFollowingSafeRedirects(url, {
+      method: "GET", range: "bytes=0-0", timeoutMs: 6500
     });
+    if (!result.ok) return null;
+    const response = result.response;
     const match = /^bytes 0-0\/([0-9]+)$/i.exec(response.headers.get("content-range") || "");
     const size = response.status === 206 && match ? validSize(match[1]) : null;
     await response.body?.cancel().catch(() => {});
@@ -117,20 +116,20 @@ async function handle(request: NextRequest, head = false): Promise<Response> {
     ];
     let lastCode = "UNSUPPORTED_UPSTREAM_STATUS";
     let lastStatus = 0;
+    let lastRedirects = 0;
 
     for (const target of targets) {
-      let upstream: Response;
-      try {
-        upstream = await fetch(target.url, {
-          method: "GET", redirect: "manual", cache: "no-store",
-          headers: { "Range": range.value, "Accept-Encoding": "identity" },
-          signal: AbortSignal.timeout(25000)
-        });
-      } catch {
-        lastCode = "UPSTREAM_FETCH_FAILED";
+      const result = await fetchMediaFollowingSafeRedirects(target.url, {
+        method: "GET", range: range.value, timeoutMs: 25000
+      });
+      if (!result.ok) {
+        lastCode = result.code;
+        lastRedirects = result.redirects;
         continue;
       }
+      const upstream = result.response;
       lastStatus = upstream.status;
+      lastRedirects = result.redirects;
       if (!upstream.body && !head) {
         lastCode = "NO_MEDIA_BODY";
         continue;
@@ -159,8 +158,9 @@ async function handle(request: NextRequest, head = false): Promise<Response> {
         "Content-Disposition": "inline",
         "X-Content-Type-Options": "nosniff",
         "X-Media-Range-Mode": plan.mode,
+        "X-Media-Redirects": String(lastRedirects),
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Expose-Headers": "Accept-Ranges,Content-Range,Content-Length,Content-Type,X-Media-Range-Mode"
+        "Access-Control-Expose-Headers": "Accept-Ranges,Content-Range,Content-Length,Content-Type,X-Media-Range-Mode,X-Media-Redirects"
       });
       if (head) {
         await upstream.body?.cancel().catch(() => {});
@@ -173,12 +173,17 @@ async function handle(request: NextRequest, head = false): Promise<Response> {
         status: 206, headers
       });
     }
-    console.warn("[media-range]", { source: media.source, result: lastCode, status: lastStatus });
+    console.warn("[media-range]", { source: media.source, result: lastCode, status: lastStatus, redirects: lastRedirects });
     if (lastStatus === 401 || lastStatus === 403) {
       return failure(403, "UPSTREAM_IP_BLOCKED",
         "Googlevideo menolak koneksi dari IP server Vercel. Proxy tidak dapat menjamin IP yang sama.");
     }
     if (lastStatus === 429) return failure(503, "UPSTREAM_RATE_LIMITED", "Server media membatasi permintaan.");
+    if (lastCode === "UPSTREAM_REDIRECT_BLOCKED" || lastCode === "UPSTREAM_REDIRECT_LIMIT" ||
+        lastCode === "UPSTREAM_REDIRECT_LOOP") {
+      return failure(502, lastCode,
+        "Sumber media mengalihkan permintaan ke lokasi yang tidak didukung atau berulang. Tidak ada URL tujuan yang dibuka ke publik.");
+    }
     if (lastCode === "UPSTREAM_IGNORED_RANGE") {
       return failure(502, "UPSTREAM_IGNORED_RANGE",
         "Server mengirim seluruh file untuk permintaan seek; proxy menolak agar byte video tidak rusak.");

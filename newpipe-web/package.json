@@ -1,6 +1,6 @@
 {
   "name": "newpipe-vercel-web",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -12,7 +12,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:lyrics": "node --test tests/lyrics.test.mjs",
-    "test:media": "node --experimental-strip-types --test tests/media-range.test.mjs"
+    "test:media": "node --experimental-strip-types --test tests/media-range.test.mjs tests/media-redirect.test.mjs"
   },
   "dependencies": {
     "next": "16.4.6",
