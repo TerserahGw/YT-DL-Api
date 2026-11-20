@@ -1,84 +1,76 @@
-# NewPipe Web — Full Vercel (Original Java NewPipeExtractor)
+# NewPipe Web UI — YouTube.js v2 (Vercel)
 
-**One Vercel project. No VPS, no second host, no reimplementation of NewPipeExtractor in JavaScript.**
+> **Backend migrated:** This project now uses [YouTube.js / youtubei.js](https://github.com/LuanRT/YouTube.js) **18.3.0**, not the Java NewPipeExtractor. The original visual branding and public REST API paths are retained for client compatibility.
 
-- `newpipe-web` service: Next.js 16 responsive website + JSON API gateway.
-- `backend` service: **actual Java backend** using [TeamNewPipe/NewPipeExtractor](https://github.com/TeamNewPipe/NewPipeExtractor), packaged by the independent GPL-3.0 project [NewPipeExtractorAPI](https://github.com/kl3pt0gr4ph/NewPipeExtractorAPI) as `mrtumble/opentube-backend:latest`.
-- Vercel's **Container Runtime** runs Java from `backend/Dockerfile.vercel`.
-- Vercel's **private service binding**, configured in the repository-root `vercel.json`, provides `EXTRACTOR_BASE_URL` to Next.js. No public Java endpoint to create, and you don't need to set this variable yourself.
+## Architecture
 
-This uses Vercel Services / Container Runtime **Beta**. The feature is documented as available on all plans, but deployment success and Java runtime behavior on your project must be confirmed by actual build/runtime logs. Vercel Functions are metered and Java startup may increase cold-start latency and resource usage.
+**One Next.js service on Vercel, with no VPS, Java, Docker or external backend.**
 
-## Deploy from GitHub using an Android phone (recommended)
+- Repository-root `vercel.json` defines the one public service `newpipe-web` rooted at `newpipe-web/`.
+- Frontend: existing responsive Explore, Trending, API Explorer, and Setup pages.
+- Backend: Next.js Node.js Route Handlers import `youtubei.js` on the server.
+- `newpipe-web/lib/youtube.ts`: session reuse and JSON normalization.
+- The old Express implementation in repository root is intentionally kept for historical compatibility but **is not deployed** by this Vercel configuration.
+- No Vercel Services bindings; no `EXTRACTOR_BASE_URL`.
 
-1. Open https://vercel.com/new and login to GitHub.
-2. Import `TerserahGw/YT-DL-Api`.
-3. Set **Root Directory** to the repository root (`./`, default). Do **not** choose `newpipe-web`: the multi-service `vercel.json` is now at the repository root.
-4. Vercel should detect the **Vercel Services** configuration from the repository-root `vercel.json`. Do not replace this file with the old single-service Next.js config.
-5. Do **not** set `EXTRACTOR_BASE_URL` manually. The `web → extractor` service binding injects it at runtime.
-6. Click **Deploy**. The frontend and Java container will be built in the same deployment.
-7. When the deployment is ready, open `https://YOUR-VERCEL-URL/api/health`. Then test `/api/search?q=Minecraft`, `/api/services` and the home page.
+## Deploy / redeploy
 
-If you already created a Vercel project from the earlier revision, keep the same GitHub repo and root directory, then **Redeploy** after this commit. Remove any old manually set `EXTRACTOR_BASE_URL` to avoid interference with the binding.
+1. In **Vercel Dashboard**, open your existing GitHub-connected project for `TerserahGw/YT-DL-Api`.
+2. Keep the **Root Directory** set to the **repository root** (empty, `./`). This is required because the active `vercel.json` is at root. Do **not** select `newpipe-web`.
+3. If framework preset is configurable, use **Services** (with services config autodetected). Only one `newpipe-web` service should be listed; `backend` (Java container) was removed.
+4. In **Settings → Environment Variables**, delete any manually set `EXTRACTOR_BASE_URL` and `BACKEND_AUTHORIZATION`. Neither is used.
+5. GitHub pushes to `main` should trigger deployment. Otherwise select **Deployments → Redeploy** using the latest commit.
+6. Open your existing domain and test:
+   - `/api/health` → `ok: true`, `backend: "youtubei.js"`, `upstream: "unchecked"`
+   - `/api/search?q=Minecraft` → `items` array
+   - `/api/stream?id=dQw4w9WgXcQ` → video info (may report `UPSTREAM_BLOCKED`)
+   - `/api/services` → provider list
 
-### Diagnosing a build or runtime problem
+### API compatibility
 
-- **Project detects only Next.js**: ensure Root Directory = repository root (`./`) and the root `vercel.json` contains `services`.
-- **Java service reports that it can't bind port 80** (unprivileged upstream image): in Vercel Project → Settings → Environment Variables set `PORT=8080` and `SERVER_PORT=8080`, then redeploy. Vercel's Container runtime defaults to routing port 80, but the project environment `PORT` may override this.
-- **503 unconfigured**: the `newpipe-web` service did not receive `EXTRACTOR_BASE_URL`. Check the service binding in `vercel.json`; it cannot be replaced with a browser-side variable.
-- **502 / timeout / cold start**: check Vercel Runtime Logs for both services. Java startup may exceed the calling function's timeout; multiple requests can create additional cold starts.
-- **403 / no streams**: NewPipeExtractor depends on changing upstream providers, IP reputation, and content availability. This does not imply Vercel cannot run Java.
-- **Service not enabled**: Vercel Services and Containers remain beta. The Vercel account/project must be able to deploy them.
+The API names and common JSON fields are preserved; responses are **adapter compatible**, not byte-for-byte copies of NewPipeExtractor DTOs.
 
-### Security and usage notes
-
-- Java service remains **private** (no public rewrite). Public clients only access Next.js allowlisted API routes.
-- Public API is unauthenticated by default; use Vercel Firewall / rate limits and restrict access for production traffic.
-- Media streaming URLs may be tied to the extractor server's public IP and often cannot be played directly on a viewer's different IP. We expose stream metadata but do not promise universal playback/download.
-- Cold starts, function limits, YouTube bot challenges, changing service responses, and third-party rights/platform terms still apply.
-- NewPipeExtractor and the independent Java backend retain their own GPL-3.0 licensing. See the linked upstream repositories and license notices.
-- Docker image `latest` can change; pin to a digest or tested tag for production reproducibility.
-
-## REST API
-
-| Public path | Example | Notes |
+| Endpoint | YouTube.js implementation | Notes |
 | --- | --- | --- |
-| `/api/health` | `/api/health` | Check Java service |
-| `/api/search` | `/api/search?q=Another+Love` | Search videos/channels/playlists |
-| `/api/stream` | `/api/stream?id=dQw4w9WgXcQ` | Raw StreamInfo JSON |
-| `/api/details` | `/api/details?id=dQw4w9WgXcQ` | Video metadata |
-| `/api/audio` | `/api/audio?id=dQw4w9WgXcQ` | Audio formats |
-| `/api/video-streams` | `/api/video-streams?id=dQw4w9WgXcQ` | Video formats |
-| `/api/subtitles` | `/api/subtitles?id=dQw4w9WgXcQ` | Subtitle tracks |
-| `/api/related` | `/api/related?id=dQw4w9WgXcQ` | Related content |
-| `/api/comments` | `/api/comments?id=dQw4w9WgXcQ` | Comments |
-| `/api/playlist` | `/api/playlist?id=PL...` | Playlist details |
-| `/api/channel` | `/api/channel?id=%40GoogleDevelopers` | Channel info |
-| `/api/channel-videos` | `/api/channel-videos?id=%40GoogleDevelopers` | Channel videos |
-| `/api/trending` | `/api/trending?category=trending_music` | Trending categories |
-| `/api/services` | `/api/services` | Available extractor services |
+| `/api/search?q=...` | `yt.search` | `items`, `name`, `url`, `type`, `thumbnailUrl`, etc. |
+| `/api/stream?id=...` | `yt.getBasicInfo` | `audioStreams`, `videoStreams`, `videoOnlyStreams`, metadata; URLs only when genuinely provided |
+| `/api/details?id=...` | `yt.getBasicInfo` | metadata |
+| `/api/audio?id=...` | `yt.getBasicInfo` | `audioStreams` |
+| `/api/video-streams?id=...` | `yt.getBasicInfo` | `videoStreams`, `videoOnlyStreams` |
+| `/api/subtitles?id=...` | `yt.getBasicInfo` | `subtitles` |
+| `/api/related?id=...` | `yt.getInfo` | `items` derived from watch-next feed |
+| `/api/comments?id=...` | `yt.getComments` | first-page `comments` |
+| `/api/playlist?id=...` | `yt.getPlaylist` | `relatedItems`, metadata |
+| `/api/channel?id=%40handle` | `yt.resolveURL` + `getChannel` | handle and channel IDs |
+| `/api/channel-videos?id=%40handle` | `yt.getChannel` / `getVideos` | first page `items` |
+| `/api/trending?category=trending_music` | `yt.search` | **Search-based discovery, NOT official trending charts** |
+| `/api/services` | static supported provider | YouTube only |
+| `/api/health` | local readiness | Does **not** check upstream anti-bot access |
 
-JSON responses are from the Java extractor API (e.g., search uses `items`).
+### Known limitations
 
-## Local development
+- **YouTube rate limits and `LOGIN_REQUIRED` remain possible, especially on shared cloud/Vercel IPs.** Switching from NewPipeExtractor does not guarantee bypass.
+- `youtubei.js` direct stream links may be missing, signature-protected, require Proof-of-Origin tokens, or use SABR. This implementation never fabricates links or promises download of any video.
+- `retrieve_player: false` speeds up serverless initialization but limits deciphering. A full streaming solution needs a separate approved player/attestation implementation and appropriate rights.
+- Search pagination, playlist pagination, and comment pagination are **not implemented**. `hasNextPage: false` means "this API exposes first page only" rather than a definitive end of YouTube results.
+- This is a **YouTube-only** backend (NewPipeExtractor supported multiple sites).
+- API endpoints are public, so add Vercel Firewall/rate limits if your project is exposed broadly. Avoid aggressive retries against YouTube.
+- Stream URLs can expire or be bound to the server's egress IP and fail in browsers.
+- YouTube.js is unofficial and unaffiliated with YouTube. Respect rights and platform usage terms.
 
-Run Java container separately for local Next.js development if you have Docker:
+## Local dev (optional)
+
 ```sh
-docker run --rm -p 8080:8080 mrtumble/opentube-backend:latest
 cd newpipe-web
-cp .env.example .env.local
 npm install
+npm run typecheck
+npm run build
 npm run dev
 ```
-`next dev` reads local `EXTRACTOR_BASE_URL=http://127.0.0.1:8080`. If you want to test the full two-service topology, use `vercel dev` from the repository root with Docker installed.
 
-## Official documentation
+Then open http://localhost:3000. No extra backend required.
 
-- https://vercel.com/kb/guide/vercel-services
-- https://vercel.com/kb/guide/docker
-- https://github.com/TeamNewPipe/NewPipeExtractor
-- https://github.com/kl3pt0gr4ph/NewPipeExtractorAPI
+## Credits and license
 
-## Vercel service routing confirmation
-
-The old Express app at repository root is preserved but **not deployed** by this services configuration. The public catch-all sends all paths (including `/api/*`) to `newpipe-web`, which implements an allowlisted REST gateway. `backend` remains internal. Private binding: `newpipe-web` → `backend` as `EXTRACTOR_BASE_URL`. Do not add a public `/api/*` rewrite directly to Java because the Java app expects `/api/v1/*`, while the web gateway exposes `/api/search`, `/api/health`, and more. The root config is the sole authoritative `vercel.json`.
+- YouTube.js (MIT): https://github.com/LuanRT/YouTube.js
+- Original NewPipeExtractor (not used in v2): https://github.com/TeamNewPipe/NewPipeExtractor

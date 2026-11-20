@@ -1,77 +1,151 @@
 import { NextRequest, NextResponse } from "next/server";
+import { youtube, normalizeItem, normalizeItems, streamData, classifyError, stringValue, numberValue, bestImage, images } from "@/lib/youtube";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-type Specification = { endpoint: string; key?: string; from?: string; max?: number; cache?: number; pattern?: RegExp };
-const VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
-const PLAYLIST_ID = /^[a-zA-Z0-9_-]{10,100}$/;
-const CHANNEL_ID = /^(?:@[a-zA-Z0-9_.-]{3,50}|channel\/UC[a-zA-Z0-9_-]{20,45})$/;
-const routes: Record<string, Specification> = {
-  search: { endpoint: "/search", from: "q", key: "searchString", max: 160, cache: 30 },
-  stream: { endpoint: "/streams", from: "id", key: "id", pattern: VIDEO_ID },
-  details: { endpoint: "/streams/details", from: "id", key: "id", pattern: VIDEO_ID },
-  audio: { endpoint: "/streams/audio", from: "id", key: "id", pattern: VIDEO_ID },
-  "video-streams": { endpoint: "/streams/video", from: "id", key: "id", pattern: VIDEO_ID },
-  subtitles: { endpoint: "/streams/subtitles", from: "id", key: "id", pattern: VIDEO_ID },
-  related: { endpoint: "/streams/related", from: "id", key: "id", pattern: VIDEO_ID, cache: 30 },
-  comments: { endpoint: "/comments", from: "id", key: "id", pattern: VIDEO_ID, cache: 30 },
-  playlist: { endpoint: "/playlists", from: "id", key: "id", pattern: PLAYLIST_ID, cache: 45 },
-  channel: { endpoint: "/channels", from: "id", key: "id", pattern: CHANNEL_ID, cache: 45 },
-  "channel-videos": { endpoint: "/channels/tab", from: "id", key: "id", pattern: CHANNEL_ID, cache: 45 },
-  services: { endpoint: "/services", cache: 120 }
+type Obj = Record<string, any>;
+const VIDEO = /^[A-Za-z0-9_-]{11}$/;
+const PLAYLIST = /^[A-Za-z0-9_-]{10,100}$/;
+const CHANNEL = /^(?:@[A-Za-z0-9_.-]{3,50}|UC[A-Za-z0-9_-]{20,45}|channel\/UC[A-Za-z0-9_-]{20,45})$/;
+const validPaths = new Set(["search","stream","details","audio","video-streams","subtitles","related","comments","playlist","channel","channel-videos","trending","services"]);
+const trendingTerms: Record<string, string> = {
+  trending_music: "musik populer terbaru",
+  trending_gaming: "gaming trending Indonesia",
+  trending_movies_and_shows: "trailer film terbaru"
 };
-const categories = new Set(["trending_music", "trending_gaming", "trending_movies_and_shows"]);
-const bad = (message: string, status = 400) => NextResponse.json({ ok: false, error: message }, { status, headers: { "Cache-Control": "no-store" } });
 
-export async function GET(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
-  const { path } = await context.params;
-  if (path.length !== 1) return bad("Unknown API route.", 404);
-  const name = path[0];
-  const spec = routes[name];
-  if (!spec && name !== "trending") return bad("Unknown API route.", 404);
-  const base = process.env.EXTRACTOR_BASE_URL?.trim();
-  if (!base) return bad("Extractor backend not configured. Set EXTRACTOR_BASE_URL.", 503);
+const failure = (status: number, code: string, error: string) =>
+  NextResponse.json({ ok: false, code, error }, { status, headers: { "Cache-Control": "no-store" } });
+const success = (data: unknown, seconds=0) =>
+  NextResponse.json(data, { headers: {
+    "Cache-Control": seconds ? `public, s-maxage=${seconds}, stale-while-revalidate=60` : "no-store",
+    "X-Content-Type-Options": "nosniff"
+  } });
 
-  let origin: URL;
+const text = (params: URLSearchParams, field: string, pattern: RegExp, max = 160) => {
+  const v = params.get(field)?.trim() || "";
+  return v.length <= max && pattern.test(v) ? v : null;
+};
+function extractVideoId(id: string) {
+  if (VIDEO.test(id)) return id;
   try {
-    origin = new URL(base);
-    if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== "/") return bad("Invalid EXTRACTOR_BASE_URL; use a host origin only.", 503);
-    const localDev = process.env.NODE_ENV === "development" && origin.protocol === "http:" && ["localhost", "127.0.0.1"].includes(origin.hostname);
-    // A Vercel Services binding may produce an internal HTTP address on its private network.
-    const privateBinding = process.env.VERCEL === "1" && origin.protocol === "http:";
-    if (origin.protocol !== "https:" && !localDev && !privateBinding) return bad("Extractor backend must use HTTPS or a Vercel private service binding.", 503);
-  } catch { return bad("Invalid EXTRACTOR_BASE_URL.", 503); }
-
-  const upstream = new URL("/api/v1" + (name === "trending" ? "/kiosks/" : spec.endpoint), origin);
-  if (name === "trending") {
-    const category = request.nextUrl.searchParams.get("category") || "trending_music";
-    if (!categories.has(category)) return bad("Invalid trending category.");
-    upstream.pathname += category;
-  } else if (spec.from && spec.key) {
-    const value = request.nextUrl.searchParams.get(spec.from)?.trim() || "";
-    if (!value || value.length > (spec.max || 128) || (spec.pattern && !spec.pattern.test(value))) return bad("Invalid or missing " + spec.from + ".");
-    upstream.searchParams.set(spec.key, value);
-    if (name === "channel-videos") upstream.searchParams.set("tab", "videos");
+    const url = new URL(id);
+    if (!["www.youtube.com","youtube.com","youtu.be","m.youtube.com","music.youtube.com"].includes(url.hostname)) return null;
+    const v = url.hostname==="youtu.be" ? url.pathname.slice(1) : url.searchParams.get("v") || url.pathname.split("/")[2];
+    return v && VIDEO.test(v) ? v : null;
+  } catch { return null; }
+}
+function responseList(items: Obj[], query: string, source: string) {
+  return { url: null, name: query, searchString: query, searchSuggestion: null,
+    isCorrectedSearch: false, items, hasNextPage: false, nextPage: null, source };
+}
+async function channelFromId(yt: any, value: string) {
+  let id = value.startsWith("channel/") ? value.slice(8) : value;
+  if (id.startsWith("@")) {
+    const endpoint = await yt.resolveURL("https://www.youtube.com/" + id);
+    id = stringValue(endpoint?.payload?.browseId || endpoint?.payload?.browse_id);
+    if (!/^UC[A-Za-z0-9_-]{20,45}$/.test(id)) throw new Error("Channel not found");
   }
+  return yt.getChannel(id);
+}
+function channelHeader(channel: any, id: string) {
+  const metadata = channel.metadata || {};
+  const header = channel.header || {};
+  return {
+    id, name: stringValue(metadata.title || header.author?.name || header.title),
+    url: id.startsWith("UC") ? "https://www.youtube.com/channel/" + id : "https://www.youtube.com/" + id,
+    description: stringValue(metadata.description || header.description),
+    subscriberCount: numberValue(header.subscriber_count || metadata.subscriber_count),
+    avatars: images(header.avatars || header.avatar || header.author?.thumbnails),
+    banners: images(header.banners || header.banner),
+    verified: Boolean(header.author?.is_verified),
+    source: "youtubei.js"
+  };
+}
+
+export async function GET(request: NextRequest, context: {params: Promise<{path:string[]}>}) {
+  const { path } = await context.params;
+  if (path.length !== 1 || !validPaths.has(path[0])) return failure(404,"NOT_FOUND","Endpoint API tidak dikenal.");
+  const route = path[0];
+  const params = request.nextUrl.searchParams;
   try {
-    const headers: HeadersInit = { Accept: "application/json" };
-    if (process.env.BACKEND_AUTHORIZATION) headers["Authorization"] = process.env.BACKEND_AUTHORIZATION;
-    const response = await fetch(upstream, { headers, signal: AbortSignal.timeout(22000), cache: "no-store", redirect: "error" });
-    const raw = await response.text();
-    if (raw.length > 8_000_000) return bad("Backend response too large.", 502);
-    let body: unknown;
-    try { body = JSON.parse(raw); } catch { return bad("Backend returned invalid JSON.", 502); }
-    if (!response.ok) {
-      const err = body as { message?: string; errorCode?: string };
-      return NextResponse.json({ ok: false, error: typeof err.message === "string" ? err.message.slice(0, 300) : "Extractor error", code: err.errorCode || "UPSTREAM_ERROR" },
-        { status: response.status >= 400 && response.status < 600 ? response.status : 502, headers: { "Cache-Control": "no-store" } });
+    if (route === "services") return success({services:[{name:"YouTube", id:0}],backend:"youtubei.js",version:"18.3.0"},3600);
+    const yt = await youtube();
+    if (route === "search") {
+      const q = text(params,"q",/^[\s\S]{1,160}$/);
+      if (!q) return failure(400,"INVALID_QUERY","Parameter q wajib diisi (maksimum 160 karakter).");
+      const result: any = await yt.search(q);
+      return success(responseList(normalizeItems(result.results),q,"youtubei.js"),30);
     }
-    const cache = spec?.cache || 0;
-    return NextResponse.json(body, { status: 200, headers: { "Cache-Control": cache ? `public, s-maxage=${cache}, stale-while-revalidate=30` : "no-store", "X-Content-Type-Options": "nosniff" } });
-  } catch (err) {
-    const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
-    return bad(timedOut ? "Extractor backend timed out." : "Extractor backend unavailable.", timedOut ? 504 : 502);
+    if (route === "trending") {
+      const category = params.get("category") || "trending_music";
+      if (!Object.hasOwn(trendingTerms,category)) return failure(400,"INVALID_CATEGORY","Kategori tidak didukung.");
+      const q = trendingTerms[category];
+      // YouTube.js does not expose the original NewPipe kiosks; honest search-based substitute.
+      const result: any = await yt.search(q, { type: "video" });
+      return success({...responseList(normalizeItems(result.results), q, "youtubei.js-search-fallback"), category, officialChart:false},60);
+    }
+    if (["stream","details","audio","video-streams","subtitles","related","comments"].includes(route)) {
+      const id = extractVideoId(params.get("id")?.trim() || "");
+      if (!id) return failure(400,"INVALID_VIDEO_ID","Parameter id harus ID video YouTube yang valid.");
+      if (route === "comments") {
+        const commentPage:any = await yt.getComments(id);
+        const rows = Array.isArray(commentPage.contents) ? commentPage.contents : [];
+        return success({id, comments: rows.slice(0,80).map((entry:any)=>{
+          const c = entry?.comment || {};
+          return {id:stringValue(c.comment_id || c.id), text:stringValue(c.content || c.text),
+            author:stringValue(c.author?.name || c.author), likes:stringValue(c.vote_count || c.like_count),
+            published:stringValue(c.published), replies:numberValue(entry?.reply_count)};
+        }), hasNextPage:false, source:"youtubei.js"},20);
+      }
+      const info: any = route === "related" ? await yt.getInfo(id) : await yt.getBasicInfo(id);
+      const base = streamData(info);
+      if (route === "stream") return success(base,0);
+      if (route === "details") return success({
+        id, videoTitle:base.videoTitle, name:base.name, url:base.url,
+        description:base.description, viewCount:base.viewCount, likeCount:base.likeCount,
+        channelName:base.channelName, uploadDate:base.uploadDate,
+        duration:base.duration, thumbnails:base.thumbnails,
+        source:"youtubei.js"
+      },20);
+      if (route === "audio") return success({id, audioStreams:base.audioStreams, source:"youtubei.js"},0);
+      if (route === "video-streams") return success({id, videoStreams:base.videoStreams, videoOnlyStreams:base.videoOnlyStreams, source:"youtubei.js"},0);
+      if (route === "subtitles") {
+        const raw = info.captions?.caption_tracks;
+        const tracks = Array.isArray(raw) ? raw : [];
+        return success({id, subtitles: tracks.map((t:any)=>({
+          language: stringValue(t.language_code), name:stringValue(t.name),
+          url: typeof t.base_url==="string" ? t.base_url : null, automatic: t.kind==="asr"
+        })),source:"youtubei.js"},30);
+      }
+      if (route === "related") return success({...responseList(normalizeItems(info.watch_next_feed),id,"youtubei.js"),id},20);
+    }
+    if (route === "playlist") {
+      const id = text(params,"id",PLAYLIST,100);
+      if (!id) return failure(400,"INVALID_PLAYLIST_ID","Parameter id playlist tidak valid.");
+      const data:any = await yt.getPlaylist(id);
+      const info = data.info || {};
+      const items = normalizeItems(data.items);
+      return success({id, url:"https://www.youtube.com/playlist?list="+id, name:stringValue(info.title || info.name) || "Playlist",
+        uploaderName:stringValue(info.author?.name || info.author), thumbnailUrl:bestImage(info.thumbnails),
+        thumbnails:images(info.thumbnails), streamCount:items.length, relatedItems:items, source:"youtubei.js"},40);
+    }
+    if (route === "channel" || route === "channel-videos") {
+      const id = text(params,"id",CHANNEL,70);
+      if (!id) return failure(400,"INVALID_CHANNEL_ID","Gunakan @handle atau channel/UC... sebagai id.");
+      const data:any = await channelFromId(yt,id);
+      if (route === "channel") return success(channelHeader(data,id),40);
+      const videos:any = await data.getVideos();
+      const items = normalizeItems(videos.videos);
+      return success({...responseList(items,id,"youtubei.js"),id},45);
+    }
+    return failure(404,"NOT_FOUND","Endpoint tidak ditemukan.");
+  } catch (error: unknown) {
+    const problem = classifyError(error);
+    // Never include session data, request headers or full upstream error payloads in public JSON.
+    console.error("[youtubei]",route,problem.code,error instanceof Error? error.name : "UnknownError");
+    return failure(problem.status,problem.code,problem.message);
   }
 }

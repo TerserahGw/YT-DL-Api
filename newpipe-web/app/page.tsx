@@ -22,7 +22,7 @@ const API_ENDPOINTS = [
   { path: "/api/channel-videos?id=%40GoogleDevelopers", title: "Channel videos", note: "Video channel" },
   { path: "/api/trending?category=trending_music", title: "Trending", note: "Musik, gaming, atau film" },
   { path: "/api/services", title: "Services", note: "Daftar layanan yang didukung" },
-  { path: "/api/health", title: "Health", note: "Status backend Java" }
+  { path: "/api/health", title: "Health", note: "Kesiapan layanan YouTube.js" }
 ];
 const TRENDS = [
   { id: "trending_music", title: "Music", icon: "♫" },
@@ -83,7 +83,7 @@ async function api(path: string): Promise<Obj> {
   const content = (await res.json()) as Obj;
   if (!res.ok) {
     if (content.code === "UPSTREAM_BLOCKED") {
-      throw new Error("YouTube meminta verifikasi anti-bot untuk IP backend Vercel. Backend Java tetap online, tetapi akses metadata video ditolak. Ini bukan masalah konfigurasi atau koneksi website.");
+      throw new Error("YouTube meminta verifikasi anti-bot untuk IP server Vercel. YouTube.js bisa mengalami kendala ini meskipun aplikasi berhasil berjalan.");
     }
     throw new Error(String(content.error || content.message || `HTTP ${res.status}`));
   }
@@ -188,32 +188,32 @@ export default function HomePage() {
         <button className={"nav-item " + (mode==="about"?"active":"")} onClick={()=>navigate("about")}><span>ⓘ</span> Setup & About <span className="nav-arrow">›</span></button>
       </nav>
       <div className="sidebar-bottom">
-        <div className="service-card"><div className="service-row"><span className={"status-dot " + health} /><span>Extractor backend</span></div><b>{health==="online"?"Connected":health==="unconfigured"?"Not configured":health==="checking"?"Checking...":"Unavailable"}</b><small>{health==="online"?"Java backend ready":"Check Vercel Services deployment"}</small></div>
-        <div className="sidebar-foot">Built for Vercel · NewPipeExtractor</div>
+        <div className="service-card"><div className="service-row"><span className={"status-dot " + health} /><span>YouTube.js API</span></div><b>{health==="online"?"Connected":health==="unconfigured"?"Not configured":health==="checking"?"Checking...":"Unavailable"}</b><small>{health==="online"?"Runtime online (YouTube not checked)":"Check deployment status"}</small></div>
+        <div className="sidebar-foot">Built for Vercel · YouTube.js</div>
       </div>
     </aside>
     {mobileMenu && <button className="mobile-cover" aria-label="Close sidebar" onClick={()=>setMobileMenu(false)} />}
     <main className="main">
       <header className="topbar">
         <div className="topbar-left"><button className="menu-toggle" onClick={()=>setMobileMenu(!mobileMenu)} aria-label="Toggle menu">☰</button><span className="breadcrumbs">Workspace <span>/</span> {mode==="discover"?"Explore":mode==="trending"?"Trending":mode==="api"?"API Explorer":"Setup"}</span></div>
-        <div className="header-right"><span className="header-version">v1.0.0</span><span className={"connection " + health}><span className={"status-dot "+health}/>{health==="online"?"Backend online":health==="unconfigured"?"Needs setup":health==="checking"?"Checking":"Backend offline"}</span></div>
+        <div className="header-right"><span className="header-version">v2.0.0</span><span className={"connection " + health}><span className={"status-dot "+health}/>{health==="online"?"Backend online":health==="unconfigured"?"Needs setup":health==="checking"?"Checking":"Backend offline"}</span></div>
       </header>
       <div className="content">
         {mode==="discover" && <>
           <section className="hero">
             <div className="hero-tag"><span className="hero-star">✳</span> UNIVERSAL MEDIA EXTRACTOR · WEB INTERFACE</div>
             <h1>Discover. Extract.<br/><span>Explore anything.</span></h1>
-            <p>Jelajahi video, channel, dan playlist melalui NewPipeExtractor. Semua data dikirim sebagai JSON lewat REST API milikmu.</p>
+            <p>Jelajahi video, channel, dan playlist dengan YouTube.js melalui REST API milikmu. Tanpa VPS dan tanpa Java.</p>
             <form className="search-form" onSubmit={submit}>
               <span className="search-symbol">⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari video, musik, atau tempel URL YouTube..." aria-label="Search content" maxLength={300}/><button type="submit" disabled={state.loading}>{state.loading?"Loading...":"Search"} <span>↗</span></button>
             </form>
             <div className="quick-terms"><span>Try searching</span>{["Another Love","Lo-fi beats","Minecraft","Music"].map(t=><button key={t} onClick={()=>setQuery(t)}>{t}</button>)}</div>
           </section>
-          <div className="section-head"><div><span className="eyebrow">DISCOVER</span><h2>{detail ? "Content details" : state.label || "Everything in one place"}</h2></div><span className="muted">{detail?"Extractor result":items.length ? `${items.length} results` : "Powered by NewPipe"}</span></div>
+          <div className="section-head"><div><span className="eyebrow">DISCOVER</span><h2>{detail ? "Content details" : state.label || "Everything in one place"}</h2></div><span className="muted">{detail?"Extractor result":items.length ? `${items.length} results` : "Powered by YouTube.js"}</span></div>
           {!state.loading && !state.error && !detail && !state.data && <div className="feature-grid">
             <button className="feature-card" onClick={()=>void loadTrend("trending_music")}><div className="feature-icon purple">♫</div><h3>Explore trending</h3><p>Temukan musik, gaming, dan film yang sedang populer.</p><span>Explore →</span></button>
             <button className="feature-card" onClick={()=>navigate("api")}><div className="feature-icon blue">⌘</div><h3>REST API</h3><p>Akses data dari bot, website, atau aplikasi lewat JSON.</p><span>View endpoints →</span></button>
-            <button className="feature-card" onClick={()=>navigate("about")}><div className="feature-icon pink">⚙</div><h3>Connect backend</h3><p>Backend Java berjalan langsung di Vercel melalui Container Runtime.</p><span>Setup guide →</span></button>
+            <button className="feature-card" onClick={()=>navigate("about")}><div className="feature-icon pink">⚙</div><h3>YouTube.js runtime</h3><p>Ekstraksi metadata dilakukan langsung dari server Node.js di Vercel.</p><span>Setup guide →</span></button>
           </div>}
           {renderResults()}
         </>}
@@ -226,14 +226,14 @@ export default function HomePage() {
           <div className="page-heading"><span className="eyebrow">DEVELOPER TOOLS</span><h1>API Explorer<span className="accent-text">.</span></h1><p>Seluruh endpoint tersedia dari domain Vercel milikmu. Klik untuk menyalin request.</p></div>
           <div className="api-tip"><span>◈</span><div><b>Base URL</b><code>{typeof window!=="undefined"?window.location.origin:"https://your-domain.vercel.app"}</code></div></div>
           <div className="api-list">{API_ENDPOINTS.map(e=><div className="api-row" key={e.path}><span className="method">GET</span><div><strong>{e.title}</strong><code>{e.path}</code><small>{e.note}</small></div><button onClick={()=>void copy((typeof window!=="undefined"?window.location.origin:"")+e.path)}>{copied.endsWith(e.path)?"Copied ✓":"Copy ↗"}</button></div>)}</div>
-          <p className="disclaimer">API mencerminkan format JSON asli dari backend Java. Endpoint membutuhkan backend aktif; kunci akses dan rate limiting publik harus kamu konfigurasi di deployment.</p>
+          <p className="disclaimer">API mempertahankan nama endpoint sebelumnya dan menyediakan JSON adapter YouTube.js. Beberapa properti streaming atau hasil trending mungkin berbeda; gunakan rate limit / Vercel Firewall untuk API publik.</p>
         </>}
         {mode==="about" && <>
-          <div className="page-heading"><span className="eyebrow">SYSTEM SETUP</span><h1>Connect your backend<span className="accent-text">.</span></h1><p>Frontend Next.js dan backend Java NewPipeExtractor asli dapat berjalan dalam satu deployment Vercel Services (Beta).</p></div>
-          <div className="steps"><div><span>01</span><h3>Import GitHub repository</h3><p>Import <code>TerserahGw/YT-DL-Api</code> ke Vercel. Pilih Root Directory <code>newpipe-web</code>.</p></div><div><span>02</span><h3>One project, two services</h3><p><code>vercel.json</code> otomatis mendefinisikan Next.js Web dan backend Java NewPipeExtractor yang berjalan dalam Vercel Container Runtime.</p></div><div><span>03</span><h3>No VPS or manual URL needed</h3><p>Binding privat Vercel menyuntikkan <code>EXTRACTOR_BASE_URL</code> ke frontend. Tidak perlu server terpisah atau mengisi URL backend.</p></div><div><span>04</span><h3>Verify API health</h3><p>Setelah deploy, buka <code>/api/health</code> kemudian coba <code>/api/search?q=Minecraft</code>. Lihat Runtime Logs jika backend belum aktif.</p></div></div>
-          <div className="setup-note"><strong>Important</strong><p>Vercel Container Runtime masih Beta dan membutuhkan resource cukup untuk Java. Stream URL mungkin terikat IP server sehingga tidak selalu bisa diputar langsung dari perangkat lain.</p></div>
+          <div className="page-heading"><span className="eyebrow">SYSTEM SETUP</span><h1>YouTube.js setup<span className="accent-text">.</span></h1><p>Website dan API sekarang menggunakan YouTube.js langsung dalam satu layanan Next.js di Vercel. Tidak ada backend Java atau VPS.</p></div>
+          <div className="steps"><div><span>01</span><h3>Import GitHub repository</h3><p>Import <code>TerserahGw/YT-DL-Api</code> ke Vercel. Pilih Root Directory <code>newpipe-web</code>.</p></div><div><span>02</span><h3>One Next.js service</h3><p><code>vercel.json</code> menjalankan hanya <code>newpipe-web</code>. API Route Handler memanggil library <code>youtubei.js</code> langsung.</p></div><div><span>03</span><h3>No backend URL</h3><p>Hapus environment variable lama <code>EXTRACTOR_BASE_URL</code> dan <code>BACKEND_AUTHORIZATION</code> jika ada. Tidak perlu menyiapkan Java atau Docker.</p></div><div><span>04</span><h3>Test API endpoints</h3><p>Setelah deploy, uji <code>/api/health</code> lalu <code>/api/search?q=Minecraft</code> dan <code>/api/stream?id=dQw4w9WgXcQ</code>. Health hanya menguji kesiapan aplikasi, bukan akses YouTube.</p></div></div>
+          <div className="setup-note"><strong>Important</strong><p>YouTube.js tidak menjamin lolos pemblokiran IP Vercel. Sebagian URL media perlu decipher, attestation, atau tidak tersedia akibat protokol SABR.</p></div>
         </>}
-        <footer>Unofficial NewPipe web gateway · Not affiliated with YouTube or TeamNewPipe. <span>© 2026 · Built for developers</span></footer>
+        <footer>Unofficial YouTube.js API viewer · Not affiliated with YouTube or TeamNewPipe. <span>© 2026 · Built for developers</span></footer>
       </div>
     </main>
   </div>;
@@ -244,7 +244,7 @@ export default function HomePage() {
     if (detail?.kind === "request-error") return <div className="empty-state error-state">
       <div>!</div><h3>Video belum dapat diekstrak</h3>
       <p>{detail.data.message}</p>
-      <p>Permintaan ditolak oleh YouTube, bukan karena backend Java mati. Hindari mengulang permintaan terus-menerus; tunggu sebelum mencoba lagi.</p>
+      <p>Permintaan ditolak oleh YouTube, bukan karena aplikasi Node.js mati. Hindari mengulang permintaan terus-menerus; tunggu sebelum mencoba lagi.</p>
       <button onClick={()=>setDetail(null)}>← Kembali ke hasil pencarian</button>
       {validLink(detail.url) && <p><a className="external-link" href={validLink(detail.url)} target="_blank" rel="noopener noreferrer">Buka sumber video ↗</a></p>}
     </div>;

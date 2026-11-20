@@ -3,20 +3,7 @@
   "services": {
     "newpipe-web": {
       "root": "newpipe-web",
-      "framework": "nextjs",
-      "bindings": [
-        {
-          "type": "service",
-          "service": "backend",
-          "format": "url",
-          "env": "EXTRACTOR_BASE_URL"
-        }
-      ]
-    },
-    "backend": {
-      "root": "newpipe-web/backend",
-      "runtime": "container",
-      "entrypoint": "Dockerfile.vercel"
+      "framework": "nextjs"
     }
   },
   "rewrites": [

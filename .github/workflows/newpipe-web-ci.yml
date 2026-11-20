@@ -3,10 +3,12 @@ on:
   push:
     paths:
       - "newpipe-web/**"
+      - "vercel.json"
       - ".github/workflows/newpipe-web-ci.yml"
   pull_request:
     paths:
       - "newpipe-web/**"
+      - "vercel.json"
       - ".github/workflows/newpipe-web-ci.yml"
 jobs:
   build:
