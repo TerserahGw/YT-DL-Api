@@ -23,6 +23,7 @@ jobs:
           node-version: "22"
       - run: npm install --no-audit --no-fund
       - run: npm run test:lyrics
+      - run: npm run test:media
       - run: npm run typecheck
       - run: npm run build
       - uses: actions/setup-python@v5

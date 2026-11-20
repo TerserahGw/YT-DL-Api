@@ -1,4 +1,4 @@
-# NewPipe Web v2.2 — YouTube.js + yt-dlp fallback + Lyrics JSON + Signed Media Proxy
+# NewPipe Web v2.2.1 — YouTube.js + yt-dlp fallback + Lyrics JSON + Signed Media Proxy
 
 Next.js web interface and compatible public REST API, deployed **100% in one Vercel project**, no VPS.
 
@@ -112,12 +112,21 @@ The API can return **same-domain** media URLs, avoiding direct browser requests 
 - Do not distribute media without appropriate rights and authorization; be mindful of YouTube's terms of service.
 - If `MEDIA_PROXY_SECRET` is absent, `/api/media` is disabled and direct URLs remain unchanged. No cookies or provider URLs are exposed by signed proxy URLs.
 
+### HTTP Range compatibility fix (v2.2.1)
+
+Googlevideo can serve a bounded byte interval via the query parameter \`range=start-end\` and respond with HTTP **200** instead of HTTP **206**. The old proxy rejected every 200, producing \`UPSTREAM_RANGE_UNSUPPORTED\` even when the bytes could have been correct.
+
+The new \`/api/media\` handler tries query-based and header-based byte ranges, validates \`Content-Range\` when 206 is returned, and accepts 200 **only** when a known total media length and exact bounded \`Content-Length\` prove that the requested interval was served. It never substitutes bytes from the start of a whole file for a nonzero seek offset. A bounded readable stream caps forwarded bytes at 2 MiB. \`X-Media-Range-Mode\` identifies the successful strategy (\`http-206\`, \`youtube-200\`, \`full-200-prefix\`). If neither strategy can be verified, it returns \`UPSTREAM_RANGE_UNVERIFIED\`.
+
+If the upstream still rejects the egress IP or returns an ambiguous response, the proxy cannot safely fix the data without a stable source connection. Add Vercel Firewall and monitor traffic, as every chunk can cost bandwidth and extraction time.
+
 ## Local development / testing
 
 ```sh
 cd newpipe-web
 npm install
 npm run test:lyrics
+npm run test:media
 npm run typecheck
 npm run build
 npm run dev
