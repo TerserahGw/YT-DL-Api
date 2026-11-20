@@ -101,7 +101,20 @@ export async function GET(request: NextRequest, context: {params: Promise<{path:
         }), hasNextPage:false, source:"youtubei.js"},20);
       }
       const info: any = route === "related" ? await yt.getInfo(id) : await yt.getBasicInfo(id);
+      const playbackStatus = stringValue(info?.playability_status?.status).toUpperCase();
+      if (playbackStatus === "LOGIN_REQUIRED") {
+        return failure(503, "UPSTREAM_BLOCKED",
+          "YouTube meminta login atau verifikasi anti-bot untuk permintaan pemutaran dari server ini. Pencarian mungkin tetap berfungsi.");
+      }
+      if (playbackStatus && playbackStatus !== "OK" && playbackStatus !== "LIVE_STREAM_OFFLINE") {
+        return failure(422, "UNPLAYABLE",
+          "YouTube menolak pemutaran video ini (" + playbackStatus + "). Status ini bukan bukti backend offline.");
+      }
       const base = streamData(info);
+      if (!base.id || !base.name) {
+        return failure(502, "INCOMPLETE_METADATA",
+          "YouTube tidak mengembalikan metadata video yang diperlukan. Respons kosong tidak lagi dilaporkan sebagai sukses.");
+      }
       if (route === "stream") return success(base,0);
       if (route === "details") return success({
         id, videoTitle:base.videoTitle, name:base.name, url:base.url,
